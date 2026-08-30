@@ -100,3 +100,38 @@ class ValidationResult:
     subtotal_factura: float
     diferencia: float
     detalle: str = ""
+
+
+class TipoComprobante(str, Enum):
+    FACTURA = "factura"
+    NOTA_CREDITO = "nota_credito"
+
+
+@dataclass
+class Segmentacion:
+    """Reparto de una compra entre 'oficial' y 'alternativa' (u otras partes),
+    ya sea proporcional o por cantidad puntual acordada con el proveedor."""
+
+    parte: str  # ej. "oficial", "alternativa"
+    cantidad: float
+
+
+def repartir_segmentacion(cantidad_total: float, partes: dict[str, float]) -> list[Segmentacion]:
+    """Reparte `cantidad_total` según los pesos relativos de `partes` (ej.
+    {"oficial": 1, "alternativa": 1} para mitad y mitad). El último reparto
+    absorbe el redondeo para que la suma dé exacto."""
+    if not partes:
+        raise ValueError("Debe indicarse al menos una parte para segmentar.")
+    total_pesos = sum(partes.values())
+    if total_pesos <= 0:
+        raise ValueError("La suma de los pesos de las partes debe ser mayor a cero.")
+
+    nombres = list(partes.keys())
+    resultado = []
+    asignado = 0.0
+    for nombre in nombres[:-1]:
+        cantidad = round(cantidad_total * partes[nombre] / total_pesos, 3)
+        resultado.append(Segmentacion(parte=nombre, cantidad=cantidad))
+        asignado += cantidad
+    resultado.append(Segmentacion(parte=nombres[-1], cantidad=round(cantidad_total - asignado, 3)))
+    return resultado

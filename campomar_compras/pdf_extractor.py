@@ -16,8 +16,6 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-import pdfplumber
-
 from campomar_compras.models import InvoiceLine, InvoiceTotals
 
 # Línea típica: "RNMI 37A859  REGULADOR DE VOLTAJE FIAT ...   1,00   27.762,20"
@@ -53,6 +51,8 @@ def _parse_numero(raw: str) -> float:
 
 
 def _texto_nativo(pdf_path: Path) -> str:
+    import pdfplumber  # import diferido: sólo hace falta para leer PDFs reales
+
     texto = []
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:

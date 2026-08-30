@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from typing import Callable
 
 from rapidfuzz import fuzz
 
@@ -31,15 +32,31 @@ def _normalize(code: str) -> str:
 
 
 class CodeMappingStore:
-    def __init__(self, proveedor_slug: str, providers_dir: Path = PROVIDERS_DIR):
+    def __init__(
+        self,
+        proveedor_slug: str,
+        providers_dir: Path = PROVIDERS_DIR,
+        regla: "Callable[[str], str] | None" = None,
+    ):
+        """`regla` es una transformación determinística código proveedor ->
+        código Centum (ej. Ralux: "RAL" + último segmento tras el guion). Se
+        usa como respaldo cuando no hay un mapeo ya confirmado en la tabla —
+        útil para proveedores donde se conoce la fórmula exacta, a diferencia
+        de otros (ej. Nossovitch) donde cada código hay que aprenderlo."""
         self.proveedor_slug = proveedor_slug
         self.path = providers_dir / f"{proveedor_slug}.json"
+        self.regla = regla
         self._data: dict[str, str] = {}
         if self.path.exists():
             self._data = json.loads(self.path.read_text(encoding="utf-8"))
 
     def get_centum_code(self, codigo_proveedor: str) -> str | None:
-        return self._data.get(_normalize(codigo_proveedor))
+        mapeo = self._data.get(_normalize(codigo_proveedor))
+        if mapeo:
+            return mapeo
+        if self.regla:
+            return self.regla(codigo_proveedor)
+        return None
 
     def learn(self, codigo_proveedor: str, codigo_centum: str) -> None:
         self._data[_normalize(codigo_proveedor)] = codigo_centum

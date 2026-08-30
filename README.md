@@ -26,7 +26,33 @@ Prototipo de la lógica de negocio, probado con datos de ejemplo:
   sin impuestos que quedaría cargado contra el neto real del PDF; sólo si
   coincide se indica que se puede guardar la compra.
 - `campomar_compras/cli.py` — corre el flujo completo en **modo manual**.
-- `tests/` — casos con los ejemplos reales de Nossovitch y Cia S.A.
+- `campomar_compras/provider_parsers.py` — parsers calibrados con facturas
+  reales de **Nosso** (código en columna aparte, formato numérico EE.UU.,
+  bloque de totales por Alícuota/Gravado) y **Ralux** (código pegado a la
+  descripción, formato europeo, columna de descuento, percepción de IIBB
+  por jurisdicción). Cada proveedor nuevo suma su propio parser acá.
+- Mapeo de código proveedor → Centum: puede ser una **regla determinística**
+  (ej. Ralux: `"RAL" + último segmento tras el guion`, confirmado con
+  ejemplos reales) o una **tabla aprendida** (ej. Nossovitch, donde no hay
+  una fórmula única y cada código se va confirmando a mano).
+- `campomar_compras.models.repartir_segmentacion` — reparte una cantidad
+  entre "oficial"/"alternativa" (u otras partes), proporcional o por
+  cantidad puntual, para cuando el proveedor factura mitad oficial/mitad
+  alternativa (o un reparto puntual acordado).
+- `tests/` — casos con datos reales de Nossovitch y Ralux.
+
+## Pendiente / a definir con más ejemplos
+
+- **Notas de Crédito**: la factura de Exintrader analizada es en realidad
+  una Nota de Crédito A (cantidades negativas) — un tipo de comprobante
+  distinto (`TipoComprobante.NOTA_CREDITO` ya está en el modelo) que
+  todavía no tiene parser ni lógica de conciliación propia.
+- **Descripciones que se cortan en dos líneas** (pasa en algunas facturas de
+  Ralux): hoy esa línea se pierde silenciosamente en vez de reconstruirse.
+- **Documento de segmentación oficial/alternativa**: el archivo de ejemplo
+  visto (con sufijos `1X*`, `2X*`, `STD`) no es una factura AFIP sino un
+  reporte de pedido — falta definir con el usuario cómo se traduce
+  exactamente a un reparto oficial/alternativa antes de automatizarlo.
 
 ## Uso en modo manual (hoy)
 
