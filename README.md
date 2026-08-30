@@ -43,10 +43,12 @@ Prototipo de la lógica de negocio, probado con datos de ejemplo:
 
 ## Pendiente / a definir con más ejemplos
 
-- **Notas de Crédito**: la factura de Exintrader analizada es en realidad
-  una Nota de Crédito A (cantidades negativas) — un tipo de comprobante
-  distinto (`TipoComprobante.NOTA_CREDITO` ya está en el modelo) que
-  todavía no tiene parser ni lógica de conciliación propia.
+- **Notas de Crédito: fuera de alcance a propósito.** La de Exintrader
+  analizada es una Nota de Crédito A (cantidades negativas), pero
+  normalmente no son por artículos sino por descuentos — esas siempre se
+  cargan a mano en Centum, no forman parte de este flujo automatizado.
+  (`TipoComprobante.NOTA_CREDITO` queda en el modelo sólo para poder
+  distinguir el tipo de documento si hiciera falta más adelante.)
 - **Descripciones que se cortan en dos líneas** (pasa en algunas facturas de
   Ralux): hoy esa línea se pierde silenciosamente en vez de reconstruirse.
 - **Documento de segmentación oficial/alternativa**: el archivo de ejemplo
