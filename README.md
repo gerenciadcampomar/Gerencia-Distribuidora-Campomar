@@ -39,7 +39,16 @@ Prototipo de la lógica de negocio, probado con datos de ejemplo:
   entre "oficial"/"alternativa" (u otras partes), proporcional o por
   cantidad puntual, para cuando el proveedor factura mitad oficial/mitad
   alternativa (o un reparto puntual acordado).
-- `tests/` — casos con datos reales de Nossovitch y Ralux.
+- `campomar_compras/provider_parsers.py` (ByC) — decodifica el reporte de
+  Pedido de un proveedor 100% "alternativo": el campo Artículo trae pegados
+  código con cero a la izquierda + variante (2 dígitos) + código sin cero.
+  La variante **no** es packaging por cantidad — es un atributo físico del
+  artículo (ej. espesor de pared del buje: a mayor espesor, menor diámetro
+  interno), así que dos líneas con el mismo código base y variante distinta
+  son artículos distintos. La clave real a mapear contra Centum es
+  `(codigo_base, variante)` junto (`PedidoProveedorLine.clave_articulo`),
+  probado con las 106 líneas reales del reporte.
+- `tests/` — casos con datos reales de Nossovitch, Ralux y ByC.
 
 ## Pendiente / a definir con más ejemplos
 
@@ -51,10 +60,13 @@ Prototipo de la lógica de negocio, probado con datos de ejemplo:
   distinguir el tipo de documento si hiciera falta más adelante.)
 - **Descripciones que se cortan en dos líneas** (pasa en algunas facturas de
   Ralux): hoy esa línea se pierde silenciosamente en vez de reconstruirse.
-- **Documento de segmentación oficial/alternativa**: el archivo de ejemplo
-  visto (con sufijos `1X*`, `2X*`, `STD`) no es una factura AFIP sino un
-  reporte de pedido — falta definir con el usuario cómo se traduce
-  exactamente a un reparto oficial/alternativa antes de automatizarlo.
+- **Mapeo de código para ByC**: no hay una fórmula conocida (como sí la hay
+  para Ralux) entre `(codigo_base, variante)` y el código real de Centum —
+  hace falta ir confirmando mapeos a mano como con Nossovitch.
+- **Segmentación oficial/alternativa entre dos compras**: el modelo
+  (`repartir_segmentacion`) está listo, pero falta definir el flujo
+  concreto de cuándo y cómo se decide el reparto entre la compra "oficial"
+  y la "alternativa" para un mismo pedido.
 
 ## Uso en modo manual (hoy)
 

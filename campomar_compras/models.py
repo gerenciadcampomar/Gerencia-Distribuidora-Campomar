@@ -120,8 +120,13 @@ class Segmentacion:
 class PedidoProveedorLine:
     """Línea de un reporte de Pedido (no es la factura en sí) donde el
     código de Centum viene codificado dentro del campo Artículo junto con
-    una variante de packaging (ej. proveedor "ByC": código con cero a la
-    izquierda + variante de 2 dígitos + código sin cero a la izquierda)."""
+    una variante (ej. proveedor "ByC": código con cero a la izquierda +
+    variante de 2 dígitos + código sin cero a la izquierda).
+
+    La variante no es packaging/cantidad por bulto: es un atributo físico
+    del artículo (ej. espesor de pared del buje) que lo hace un producto
+    distinto. La clave real del artículo es (codigo_base, variante) juntos,
+    no codigo_base solo."""
 
     comprobante: str
     codigo_base: str
@@ -130,6 +135,11 @@ class PedidoProveedorLine:
     precio_bruto: float
     precio_neto: float
     neto_pedido: float
+
+    @property
+    def clave_articulo(self) -> str:
+        """Clave compuesta para mapear/aprender contra el código de Centum."""
+        return f"{self.codigo_base}-{self.variante}"
 
 
 def repartir_segmentacion(cantidad_total: float, partes: dict[str, float]) -> list[Segmentacion]:

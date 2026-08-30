@@ -155,13 +155,22 @@ def regla_codigo_ralux(codigo_proveedor: str) -> str:
 
 
 # --- ByC (reporte de Pedido, no es la factura AFIP en sí) ---------------
-
-# "Artículo" trae 3 campos pegados: código con cero a la izquierda (4
-# dígitos) + variante de packaging (2 dígitos) + el mismo código sin cero a
-# la izquierda (3 o 4 dígitos) — confirmado con ejemplos reales:
+#
+# Este proveedor factura siempre "en forma alternativa" (no manda comprobante
+# oficial por estos artículos). El campo "Artículo" trae 3 valores pegados:
+# código con cero a la izquierda (4 dígitos) + variante (2 dígitos) + el
+# mismo código sin cero a la izquierda (3 o 4 dígitos):
 #   1349111349 -> 1349 | 11 | 1349   (variante 11 = "1X")
 #   094712947  -> 0947 | 12 | 947    (variante 12 = "2X")
 #   094710947  -> 0947 | 10 | 947    (variante 10 = "STD")
+#
+# OJO: la variante NO es un packaging/cantidad por bulto — es el espesor de
+# pared del buje (a mayor espesor, menor diámetro interno). Dos líneas con
+# el mismo código base pero variante distinta son artículos DIFERENTES, no
+# el mismo artículo con otro precio por volumen. El código real a mapear
+# contra Centum es la combinación (código base, variante), y como no hay
+# una fórmula conocida para ese mapeo, hace falta una tabla aprendida igual
+# que con Nossovitch.
 VARIANTES_BYC = {
     "10": "STD",
     "11": "1X",
