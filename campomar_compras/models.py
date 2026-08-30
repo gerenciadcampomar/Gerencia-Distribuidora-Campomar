@@ -1,0 +1,83 @@
+"""Data model shared by the extractor, the code mapper and the matcher."""
+
+from dataclasses import dataclass, field
+from enum import Enum
+
+
+@dataclass
+class RemitoArticleLine:
+    """A line already loaded in Centum after 'suscribir' remitos de compra."""
+
+    codigo_articulo: str
+    descripcion: str
+    numero_remito: str
+    cantidad: float
+    precio_unitario: float
+    dto1: float = 0.0
+    dto2: float = 0.0
+    dto3: float = 0.0
+
+    @property
+    def subtotal(self) -> float:
+        neto = self.precio_unitario
+        for dto in (self.dto1, self.dto2, self.dto3):
+            neto *= 1 - dto / 100
+        return round(neto * self.cantidad, 2)
+
+
+@dataclass
+class InvoiceLine:
+    """A line extracted from the provider's PDF/image invoice."""
+
+    codigo_proveedor: str
+    descripcion: str
+    cantidad: float
+    precio_unitario: float
+    subtotal: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.subtotal is None:
+            self.subtotal = round(self.cantidad * self.precio_unitario, 2)
+
+
+class MatchStatus(str, Enum):
+    OK = "ok"
+    CANTIDAD_DIFIERE = "cantidad_difiere"
+    PRECIO_DIFIERE = "precio_difiere"
+    EXCEDENTE = "excedente"  # remitido, no facturado -> no se carga
+    FALTANTE = "faltante"  # facturado, no remitido -> concepto "Mercaderías varias"
+
+
+@dataclass
+class MatchResult:
+    status: MatchStatus
+    remito_line: RemitoArticleLine | None = None
+    invoice_line: InvoiceLine | None = None
+    notes: str = ""
+
+
+@dataclass
+class ConceptoFaltante:
+    """Línea a cargar manualmente en 'Conceptos' -> '02 - Mercaderías varias'."""
+
+    codigo_concepto: str = "02"
+    observaciones: str = ""  # código del artículo faltante, texto libre
+    cantidad: float = 0.0
+    precio: float = 0.0
+
+    @classmethod
+    def desde_invoice_line(cls, line: InvoiceLine) -> "ConceptoFaltante":
+        return cls(
+            observaciones=f"{line.codigo_proveedor} - {line.descripcion}".strip(" -"),
+            cantidad=line.cantidad,
+            precio=line.precio_unitario,
+        )
+
+
+@dataclass
+class RegimenEspecial:
+    """Percepción por jurisdicción, siempre carga manual."""
+
+    jurisdiccion: str
+    importe: float
+    observaciones: str = ""
