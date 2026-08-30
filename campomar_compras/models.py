@@ -116,6 +116,22 @@ class Segmentacion:
     cantidad: float
 
 
+@dataclass
+class PedidoProveedorLine:
+    """Línea de un reporte de Pedido (no es la factura en sí) donde el
+    código de Centum viene codificado dentro del campo Artículo junto con
+    una variante de packaging (ej. proveedor "ByC": código con cero a la
+    izquierda + variante de 2 dígitos + código sin cero a la izquierda)."""
+
+    comprobante: str
+    codigo_base: str
+    variante: str
+    cantidad: float
+    precio_bruto: float
+    precio_neto: float
+    neto_pedido: float
+
+
 def repartir_segmentacion(cantidad_total: float, partes: dict[str, float]) -> list[Segmentacion]:
     """Reparte `cantidad_total` según los pesos relativos de `partes` (ej.
     {"oficial": 1, "alternativa": 1} para mitad y mitad). El último reparto

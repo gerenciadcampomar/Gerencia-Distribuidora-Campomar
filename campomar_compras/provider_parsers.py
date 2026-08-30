@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from campomar_compras.models import InvoiceLine, InvoiceTotals, RegimenEspecial
+from campomar_compras.models import InvoiceLine, InvoiceTotals, PedidoProveedorLine, RegimenEspecial
 from campomar_compras.pdf_extractor import extraer_texto
 
 
@@ -152,6 +152,61 @@ def regla_codigo_ralux(codigo_proveedor: str) -> str:
     guion del código propio (ej. "TEM043-T-9082" -> "RAL9082")."""
     ultimo_segmento = codigo_proveedor.strip().split("-")[-1]
     return f"RAL{ultimo_segmento}"
+
+
+# --- ByC (reporte de Pedido, no es la factura AFIP en sí) ---------------
+
+# "Artículo" trae 3 campos pegados: código con cero a la izquierda (4
+# dígitos) + variante de packaging (2 dígitos) + el mismo código sin cero a
+# la izquierda (3 o 4 dígitos) — confirmado con ejemplos reales:
+#   1349111349 -> 1349 | 11 | 1349   (variante 11 = "1X")
+#   094712947  -> 0947 | 12 | 947    (variante 12 = "2X")
+#   094710947  -> 0947 | 10 | 947    (variante 10 = "STD")
+VARIANTES_BYC = {
+    "10": "STD",
+    "11": "1X",
+    "12": "2X",
+    "13": "3X",
+    "14": "4X",
+    "16": "6X",
+    "17": "10X",
+}
+
+BYC_LINE_RE = re.compile(
+    r"^(?P<comprobante>\d+)\s+01B[RI](?P<digitos>\d{9,10}).*?"
+    r"\d{2}/\d{2}/\d{4}\s+(?P<cantidad>\d+\.\d{2})\s+"
+    r"(?P<precio_bruto>\d+\.\d{2})\s+(?P<precio_neto>\d+\.\d{2})\s+"
+    r"(?P<neto_pedido>\d+\.\d{2})\s*$"
+)
+
+
+def decode_codigo_byc(digitos: str) -> tuple[str, str]:
+    """Devuelve (codigo_base, variante) a partir del bloque de dígitos
+    pegados del campo Artículo. codigo_base es el código real (últimos 3 o
+    4 dígitos, sin cero a la izquierda)."""
+    return digitos[6:], digitos[4:6]
+
+
+def parse_lineas_byc(pdf_path: Path) -> list[PedidoProveedorLine]:
+    texto = extraer_texto(pdf_path)
+    lineas = []
+    for raw_line in texto.splitlines():
+        m = BYC_LINE_RE.match(raw_line.strip())
+        if not m:
+            continue
+        codigo_base, variante = decode_codigo_byc(m.group("digitos"))
+        lineas.append(
+            PedidoProveedorLine(
+                comprobante=m.group("comprobante"),
+                codigo_base=codigo_base,
+                variante=variante,
+                cantidad=float(m.group("cantidad")),
+                precio_bruto=float(m.group("precio_bruto")),
+                precio_neto=float(m.group("precio_neto")),
+                neto_pedido=float(m.group("neto_pedido")),
+            )
+        )
+    return lineas
 
 
 PROVIDER_PARSERS = {
