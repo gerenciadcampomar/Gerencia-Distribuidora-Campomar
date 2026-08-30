@@ -18,13 +18,21 @@ from pathlib import Path
 
 import pdfplumber
 
-from campomar_compras.models import InvoiceLine
+from campomar_compras.models import InvoiceLine, InvoiceTotals
 
 # Línea típica: "RNMI 37A859  REGULADOR DE VOLTAJE FIAT ...   1,00   27.762,20"
 DEFAULT_LINE_RE = re.compile(
     r"^(?P<codigo>[A-Z]{2,5}\s?\d{2,6}[A-Z0-9]*)\s+(?P<descripcion>.+?)\s+"
     r"(?P<cantidad>\d+(?:[.,]\d+)?)\s+(?P<precio>\d+(?:[.,]\d{3})*(?:[.,]\d{2})?)\s*$"
 )
+
+# Busca algo como "Subtotal ... 61.607,79" o "Neto Gravado ... 61.607,79"
+DEFAULT_SUBTOTAL_RE = re.compile(
+    r"(?:subtotal|neto\s*gravado)[^\d]*(\d+(?:[.,]\d{3})*(?:[.,]\d{2})?)",
+    re.IGNORECASE,
+)
+DEFAULT_IVA_RE = re.compile(r"\biva\b[^\d]*(\d+(?:[.,]\d{3})*(?:[.,]\d{2})?)", re.IGNORECASE)
+DEFAULT_TOTAL_RE = re.compile(r"\btotal\b[^\d]*(\d+(?:[.,]\d{3})*(?:[.,]\d{2})?)", re.IGNORECASE)
 
 
 @dataclass
@@ -96,3 +104,32 @@ def extraer_lineas_factura(
             )
         )
     return lineas
+
+
+def extraer_totales_factura(
+    pdf_o_imagen: Path,
+    subtotal_regex: re.Pattern = DEFAULT_SUBTOTAL_RE,
+    iva_regex: re.Pattern = DEFAULT_IVA_RE,
+    total_regex: re.Pattern = DEFAULT_TOTAL_RE,
+) -> InvoiceTotals:
+    """Lee el bloque de Totales del PDF (subtotal neto, IVA, total) para la
+    validación final contra lo que quedaría cargado en Centum. Si el layout
+    del proveedor no matchea el patrón por defecto, hay que pasarle un
+    regex específico (mismo criterio que ProviderPdfProfile)."""
+    texto = extraer_texto(pdf_o_imagen)
+
+    m_subtotal = subtotal_regex.search(texto)
+    if not m_subtotal:
+        raise ValueError(
+            "No se pudo extraer el subtotal del PDF. Revisar el layout del "
+            "proveedor y pasar un subtotal_regex específico."
+        )
+
+    m_iva = iva_regex.search(texto)
+    m_total = total_regex.search(texto)
+
+    return InvoiceTotals(
+        subtotal_neto=_parse_numero(m_subtotal.group(1)),
+        iva=_parse_numero(m_iva.group(1)) if m_iva else 0.0,
+        total=_parse_numero(m_total.group(1)) if m_total else 0.0,
+    )

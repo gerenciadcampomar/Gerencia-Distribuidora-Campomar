@@ -81,3 +81,22 @@ class RegimenEspecial:
     jurisdiccion: str
     importe: float
     observaciones: str = ""
+
+
+@dataclass
+class InvoiceTotals:
+    """Bloque 'Totales' impreso en el PDF del proveedor (o su equivalente en
+    pantalla de Centum: 'Subtotal sin Impuestos con Descuento')."""
+
+    subtotal_neto: float  # subtotal sin impuestos, ya con descuento aplicado
+    iva: float = 0.0
+    total: float = 0.0
+
+
+@dataclass
+class ValidationResult:
+    ok: bool
+    subtotal_sistema: float
+    subtotal_factura: float
+    diferencia: float
+    detalle: str = ""

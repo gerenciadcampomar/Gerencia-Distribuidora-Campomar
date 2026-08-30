@@ -22,7 +22,45 @@ Prototipo de la lógica de negocio, probado con datos de ejemplo:
 - `campomar_compras/centum_client.py` — **stub**: define las operaciones que
   hacen falta contra la API de Centum, pendiente de credenciales/documentación
   real para implementarse.
+- `campomar_compras/validator.py` — validación final: compara el subtotal
+  sin impuestos que quedaría cargado contra el neto real del PDF; sólo si
+  coincide se indica que se puede guardar la compra.
+- `campomar_compras/cli.py` — corre el flujo completo en **modo manual**.
 - `tests/` — casos con los ejemplos reales de Nossovitch y Cia S.A.
+
+## Uso en modo manual (hoy)
+
+Hasta tener acceso a la API de Centum, el flujo es: vos ya suscribiste los
+remitos en Centum a mano (tal como en las capturas), copiás esas líneas a un
+JSON simple, y el comando compara contra el PDF real:
+
+```
+python -m campomar_compras.cli \
+    --proveedor nossovitch \
+    --remitos remitos_ejemplo.json \
+    --factura factura_nossovitch.pdf
+```
+
+Formato de `--remitos`:
+
+```json
+[
+  {"codigo_articulo": "RERNMI37A859", "descripcion": "Regulador de voltaje",
+   "numero_remito": "00001-04062026", "cantidad": 1,
+   "precio_unitario": 27762.2, "dto1": 30, "dto2": 5}
+]
+```
+
+El comando imprime, línea por línea, qué tildar en Centum, qué NO tildar
+(excedente), qué cargar como Concepto "Mercaderías varias" (faltante), y al
+final un **PASS/FAIL**: sólo si da PASS corresponde entrar a Centum y
+guardar la compra. Termina con código de salida 0 (PASS) o 1 (FAIL) para
+poder engancharlo más adelante a un proceso automático.
+
+Cuando tengamos acceso a la API, este mismo `matcher`/`validator` se
+reutiliza: sólo cambia de dónde salen las líneas de remito (en vez de leer
+el JSON manual, las trae `CentumClient` directo del sistema) y quién aprieta
+"guardar" (inicialmente vos, después el propio script).
 
 ## Lo que falta para que corra contra el sistema real
 
