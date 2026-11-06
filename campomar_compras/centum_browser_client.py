@@ -212,7 +212,12 @@ class CentumBrowserClient:
             # #phrRemitoCompraArticulosSuscriptos, está vacío/oculto).
             seccion = self.page.locator("#LblgrdRemitoCompraArticulosSuscriptos")
             seccion.scroll_into_view_if_needed()
-            self.page.get_by_role("button", name=CentumTextos.BOTON_AGREGAR).first.click()
+            # TEMPORAL: sin .first a propósito. Hay más de un botón
+            # "Agregar" en la pantalla y el .first anterior clickeaba el de
+            # otra sección ("Artículos"). Saco el .first para que el error
+            # de "strict mode violation" liste todos los botones reales y
+            # pueda elegir el que corresponde a esta sección.
+            self.page.get_by_role("button", name=CentumTextos.BOTON_AGREGAR).click()
             self.page.wait_for_load_state("networkidle")
 
         self._paso("abrir_remitos_pendientes", accion)
