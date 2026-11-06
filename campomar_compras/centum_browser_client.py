@@ -164,15 +164,13 @@ class CentumBrowserClient:
             self.page.locator("#txtBusquedaProveedorRazonSocial").fill(razon_social_exacta)
             self.page.get_by_role("button", name="Buscar").click()
             self.page.wait_for_load_state("networkidle")
+            # OJO: la columna "Seleccionar" NO es un checkbox real -- es un
+            # <button onclick="BusquedaProveedorSeleccionarProveedor(id, razon)">
+            # con un ícono que visualmente parece un checkbox tildado
+            # (confirmado inspeccionando). Tildar/clickear buscando un
+            # input[type=checkbox] no hacía nada porque ese elemento no existe.
             fila = self.page.locator("tr", has_text=razon_social_exacta)
-            fila.locator("input[type=checkbox]").first.check()
-            # Tildar el checkbox no cerró la ventana en la prueba real --
-            # probamos clickear la fila también, por si la selección real
-            # se dispara desde ahí (patrón común en este tipo de grillas).
-            try:
-                fila.locator("td").first.click(timeout=2000)
-            except Exception:  # noqa: BLE001
-                pass
+            fila.locator("button:has(i.fa-check-square)").first.click()
             self.page.wait_for_load_state("networkidle")
 
         self._paso("elegir_proveedor", accion)
