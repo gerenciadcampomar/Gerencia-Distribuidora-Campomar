@@ -191,7 +191,9 @@ class CentumBrowserClient:
             self.page.locator("#select2-lstTipoComprobante-container").click()
             self.page.locator("input.select2-search__field").fill(tipo_comprobante)
             self.page.locator("li.select2-results__option", has_text=tipo_comprobante).first.click()
-            self.page.get_by_label("Fecha Documento").fill(fecha_documento)
+            # Confirmado con error real: id="txtFechaDocumento" (hay varios
+            # campos de fecha similares en filtros de búsqueda escondidos).
+            self.page.locator("#txtFechaDocumento").fill(fecha_documento)
             self.page.get_by_label("Punto de Venta").fill(punto_venta)
             self.page.get_by_label("Número").fill(numero)
 
