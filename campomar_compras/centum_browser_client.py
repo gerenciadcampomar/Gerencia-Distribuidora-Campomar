@@ -194,7 +194,9 @@ class CentumBrowserClient:
             # Confirmado con error real: id="txtFechaDocumento" (hay varios
             # campos de fecha similares en filtros de búsqueda escondidos).
             self.page.locator("#txtFechaDocumento").fill(fecha_documento)
-            self.page.get_by_label("Punto de Venta").fill(punto_venta)
+            # Confirmado con error real: id="txtPuntoVenta" (el otro,
+            # "txtPuntoVentaBusqueda", es el filtro de búsqueda de la grilla).
+            self.page.locator("#txtPuntoVenta").fill(punto_venta)
             self.page.get_by_label("Número").fill(numero)
 
         self._paso("completar_cabecera", accion)
