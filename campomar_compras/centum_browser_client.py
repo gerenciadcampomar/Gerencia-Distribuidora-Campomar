@@ -81,11 +81,12 @@ class CentumBrowserClient:
     def login(self, credenciales: CentumCredenciales) -> None:
         def accion():
             self.page.goto(credenciales.url_login)
-            inputs = self.page.locator("input").all()
-            if len(inputs) < 2:
-                raise PasoCentumError("No encontré los campos de usuario/contraseña.")
-            inputs[0].fill(credenciales.usuario)
-            inputs[1].fill(credenciales.contrasena)
+            # OJO: esta página es ASP.NET clásico y tiene inputs ocultos
+            # (__VIEWSTATE, etc.) antes de los campos visibles, así que no
+            # se puede usar "el primer input de la página" -- hay que
+            # buscarlos por su placeholder tal como se ve en pantalla.
+            self.page.get_by_placeholder("Usuario").fill(credenciales.usuario)
+            self.page.get_by_placeholder("Contraseña").fill(credenciales.contrasena)
             # El combo "Sucursal" (de dónde se toma stock) no es obligatorio:
             # Centum entra igual aunque no se toque. Si se definió una, se
             # intenta elegir, pero si no se encuentra no frena el login.

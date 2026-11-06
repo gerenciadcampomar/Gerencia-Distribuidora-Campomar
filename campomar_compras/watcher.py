@@ -10,7 +10,7 @@ Uso (Windows, PowerShell):
     $env:CENTUM_CONTRASENA = "tu_contraseña"
     # Opcional: el combo "Sucursal" del login no es obligatorio en Centum.
     $env:CENTUM_SUCURSAL = "Distribuidora Campomar"
-    python -m campomar_compras.watcher --carpeta-base C:\Campomar
+    python -m campomar_compras.watcher --carpeta-base C:\\Campomar
 
 Primero probar con --modo solo-login (no toca ningún dato, solo confirma
 que el login y la navegación a Compras funcionan) antes de usar --modo
