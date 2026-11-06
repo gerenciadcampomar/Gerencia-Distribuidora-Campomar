@@ -146,8 +146,15 @@ class CentumBrowserClient:
 
     def elegir_proveedor(self, proveedor_nombre_o_numero: str) -> None:
         def accion():
-            self.page.get_by_label(CentumTextos.CAMPO_PROVEEDOR).click()
-            self.page.get_by_text(proveedor_nombre_o_numero, exact=False).first.click()
+            # Confirmado con el error real de Playwright: es un
+            # <select id="lstProveedor"> manejado por el plugin Select2
+            # (clases "select2-hidden-accessible", atributo data-select2-id).
+            # El <select> nativo queda oculto; Select2 arma un contenedor
+            # visual con id "select2-lstProveedor-container" que hay que
+            # abrir, y adentro aparece un buscador y una lista de resultados.
+            self.page.locator("#select2-lstProveedor-container").click()
+            self.page.locator("input.select2-search__field").fill(proveedor_nombre_o_numero)
+            self.page.locator("li.select2-results__option", has_text=proveedor_nombre_o_numero).first.click()
 
         self._paso("elegir_proveedor", accion)
 
