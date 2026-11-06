@@ -183,9 +183,14 @@ class CentumBrowserClient:
         numero: str,
     ) -> None:
         def accion():
-            self.page.get_by_label(CentumTextos.TIPO_COMPROBANTE).select_option(
-                label=tipo_comprobante
-            )
+            # Tipo Comprobante también es Select2 (id="lstTipoComprobante",
+            # clase select2-hidden-accessible, confirmado con un error real
+            # de Playwright) -- a diferencia de Proveedor, acá la lista de
+            # opciones es chica y fija, así que el buscador interno de
+            # Select2 sí filtra correctamente sin necesitar la lupa.
+            self.page.locator("#select2-lstTipoComprobante-container").click()
+            self.page.locator("input.select2-search__field").fill(tipo_comprobante)
+            self.page.locator("li.select2-results__option", has_text=tipo_comprobante).first.click()
             self.page.get_by_label("Fecha Documento").fill(fecha_documento)
             self.page.get_by_label("Punto de Venta").fill(punto_venta)
             self.page.get_by_label("Número").fill(numero)
