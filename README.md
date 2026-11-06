@@ -129,7 +129,8 @@ playwright install chromium
 $env:CENTUM_URL = "https://plataforma5.centum.com.ar:22480/CentumSuite/BL1/Interfaces/Login.aspx"
 $env:CENTUM_USUARIO = "tu_usuario"
 $env:CENTUM_CONTRASENA = "tu_contraseña"
-$env:CENTUM_SUCURSAL = "tu_sucursal"
+# Opcional: Centum entra igual sin elegir nada en ese combo.
+$env:CENTUM_SUCURSAL = "Distribuidora Campomar"
 ```
 
 Estructura de carpetas que arma solo (por defecto en `C:\Campomar`, configurable con `--carpeta-base`):

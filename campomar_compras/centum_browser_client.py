@@ -86,7 +86,15 @@ class CentumBrowserClient:
                 raise PasoCentumError("No encontré los campos de usuario/contraseña.")
             inputs[0].fill(credenciales.usuario)
             inputs[1].fill(credenciales.contrasena)
-            self.page.get_by_role("combobox").select_option(label=credenciales.sucursal)
+            # El combo "Sucursal" (de dónde se toma stock) no es obligatorio:
+            # Centum entra igual aunque no se toque. Si se definió una, se
+            # intenta elegir, pero si no se encuentra no frena el login.
+            if credenciales.sucursal:
+                try:
+                    self.page.get_by_text("Seleccione la Sucursal").click()
+                    self.page.get_by_text(credenciales.sucursal, exact=False).first.click()
+                except Exception:  # noqa: BLE001
+                    pass
             self.page.get_by_role("button", name="Ingresar").click()
             self.page.wait_for_load_state("networkidle")
 

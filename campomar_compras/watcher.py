@@ -8,7 +8,8 @@ Uso (Windows, PowerShell):
     $env:CENTUM_URL = "https://plataforma5.centum.com.ar:22480/CentumSuite/BL1/Interfaces/Login.aspx"
     $env:CENTUM_USUARIO = "tu_usuario"
     $env:CENTUM_CONTRASENA = "tu_contraseña"
-    $env:CENTUM_SUCURSAL = "tu_sucursal"
+    # Opcional: el combo "Sucursal" del login no es obligatorio en Centum.
+    $env:CENTUM_SUCURSAL = "Distribuidora Campomar"
     python -m campomar_compras.watcher --carpeta-base C:\Campomar
 
 Primero probar con --modo solo-login (no toca ningún dato, solo confirma
@@ -67,7 +68,7 @@ class Carpetas:
 def _credenciales_desde_entorno() -> CentumCredenciales:
     faltantes = [
         var
-        for var in ("CENTUM_URL", "CENTUM_USUARIO", "CENTUM_CONTRASENA", "CENTUM_SUCURSAL")
+        for var in ("CENTUM_URL", "CENTUM_USUARIO", "CENTUM_CONTRASENA")
         if not os.environ.get(var)
     ]
     if faltantes:
@@ -78,7 +79,7 @@ def _credenciales_desde_entorno() -> CentumCredenciales:
         url_login=os.environ["CENTUM_URL"],
         usuario=os.environ["CENTUM_USUARIO"],
         contrasena=os.environ["CENTUM_CONTRASENA"],
-        sucursal=os.environ["CENTUM_SUCURSAL"],
+        sucursal=os.environ.get("CENTUM_SUCURSAL", ""),
     )
 
 
