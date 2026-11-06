@@ -207,7 +207,10 @@ class CentumBrowserClient:
 
     def abrir_remitos_pendientes(self) -> None:
         def accion():
-            seccion = self.page.get_by_text(CentumTextos.SECCION_ARTICULOS)
+            # Confirmado con error real: el título visible de la sección es
+            # el span #LblgrdRemitoCompraArticulosSuscriptos (el otro,
+            # #phrRemitoCompraArticulosSuscriptos, está vacío/oculto).
+            seccion = self.page.locator("#LblgrdRemitoCompraArticulosSuscriptos")
             seccion.scroll_into_view_if_needed()
             self.page.get_by_role("button", name=CentumTextos.BOTON_AGREGAR).first.click()
             self.page.wait_for_load_state("networkidle")
