@@ -166,6 +166,14 @@ class CentumBrowserClient:
             self.page.wait_for_load_state("networkidle")
             fila = self.page.locator("tr", has_text=razon_social_exacta)
             fila.locator("input[type=checkbox]").first.check()
+            # Tildar el checkbox no cerró la ventana en la prueba real --
+            # probamos clickear la fila también, por si la selección real
+            # se dispara desde ahí (patrón común en este tipo de grillas).
+            try:
+                fila.locator("td").first.click(timeout=2000)
+            except Exception:  # noqa: BLE001
+                pass
+            self.page.wait_for_load_state("networkidle")
 
         self._paso("elegir_proveedor", accion)
 
