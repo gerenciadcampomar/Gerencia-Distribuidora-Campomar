@@ -197,7 +197,9 @@ class CentumBrowserClient:
             # Confirmado con error real: id="txtPuntoVenta" (el otro,
             # "txtPuntoVentaBusqueda", es el filtro de búsqueda de la grilla).
             self.page.locator("#txtPuntoVenta").fill(punto_venta)
-            self.page.get_by_label("Número").fill(numero)
+            # Confirmado con error real: id="txtNumero" (el otro,
+            # "txtNumeroBusqueda", es el filtro de búsqueda de la grilla).
+            self.page.locator("#txtNumero").fill(numero)
 
         self._paso("completar_cabecera", accion)
 
