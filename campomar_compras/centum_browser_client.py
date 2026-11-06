@@ -152,15 +152,16 @@ class CentumBrowserClient:
             # es una ventana aparte que se abre con la lupa -- confirmado
             # inspeccionando: <button id="BtnlstProveedor_Back" ...
             # onclick="SetearOrigenBusquedaProveedor(false);BusquedaProveedorMostrar();">.
-            # El campo Razón Social de esa ventana (#txtRazonSocialProveedor)
-            # ya se había visto en un error anterior de Playwright.
+            # El campo Razón Social de esa ventana es #txtBusquedaProveedorRazonSocial
+            # (confirmado inspeccionando -- es distinto de #txtRazonSocialProveedor,
+            # que es otro campo oculto en otro lado de la página).
             #
             # OJO: puede haber varios proveedores con el MISMO CUIT (ej.
             # "NOSSO DESCONTINUADOS", "NOSSO NACIONAL" y "NOSSOVITCH Y CIA
             # S.A." comparten CUIT) -- por eso se busca y matchea por razón
             # social EXACTA, no por CUIT.
             self.page.locator("#BtnlstProveedor_Back").click()
-            self.page.locator("#txtRazonSocialProveedor").fill(razon_social_exacta)
+            self.page.locator("#txtBusquedaProveedorRazonSocial").fill(razon_social_exacta)
             self.page.get_by_role("button", name="Buscar").click()
             self.page.wait_for_load_state("networkidle")
             fila = self.page.locator("tr", has_text=razon_social_exacta)
