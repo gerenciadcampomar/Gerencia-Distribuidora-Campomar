@@ -107,8 +107,12 @@ class CentumBrowserClient:
     def _abrir_menu_lateral(self) -> None:
         """Después del login queda la pantalla de 'Bienvenida' con el menú
         lateral cerrado -- hay que abrirlo con el ícono de las tres rayas
-        (arriba a la izquierda) antes de poder clickear cualquier módulo."""
+        (arriba a la izquierda) antes de poder clickear cualquier módulo.
+        Es un <div class="menu-wrapper" onclick="OpenMenu();">, confirmado
+        inspeccionando la página real (no tiene rol accesible, por eso no
+        se podía encontrar por texto/rol)."""
         candidatos = [
+            lambda: self.page.locator(".menu-wrapper").first,
             lambda: self.page.get_by_role("button", name="menu").first,
             lambda: self.page.locator("[aria-label*='menu' i]").first,
             lambda: self.page.locator("header button, nav button").first,
