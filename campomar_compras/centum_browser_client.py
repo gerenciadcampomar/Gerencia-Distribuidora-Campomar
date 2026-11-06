@@ -150,7 +150,7 @@ class CentumBrowserClient:
             # el backend (sólo filtra lo que ya está precargado en pantalla,
             # por eso "NOSSOVITCH" no encontraba nada ahí). La búsqueda real
             # es una ventana aparte que se abre con la lupa -- confirmado
-            # inspeccionando: <button id="DivlstProveedor_back" ...
+            # inspeccionando: <button id="BtnlstProveedor_Back" ...
             # onclick="SetearOrigenBusquedaProveedor(false);BusquedaProveedorMostrar();">.
             # El campo Razón Social de esa ventana (#txtRazonSocialProveedor)
             # ya se había visto en un error anterior de Playwright.
@@ -159,7 +159,7 @@ class CentumBrowserClient:
             # "NOSSO DESCONTINUADOS", "NOSSO NACIONAL" y "NOSSOVITCH Y CIA
             # S.A." comparten CUIT) -- por eso se busca y matchea por razón
             # social EXACTA, no por CUIT.
-            self.page.locator("#DivlstProveedor_back").click()
+            self.page.locator("#BtnlstProveedor_Back").click()
             self.page.locator("#txtRazonSocialProveedor").fill(razon_social_exacta)
             self.page.get_by_role("button", name="Buscar").click()
             self.page.wait_for_load_state("networkidle")
