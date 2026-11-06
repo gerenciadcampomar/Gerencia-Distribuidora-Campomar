@@ -5,6 +5,7 @@ para elegir automáticamente el parser y el mapeo de código correctos
 
 from __future__ import annotations
 
+import datetime
 import json
 import re
 from pathlib import Path
