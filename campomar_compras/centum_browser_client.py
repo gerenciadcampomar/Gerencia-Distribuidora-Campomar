@@ -212,12 +212,10 @@ class CentumBrowserClient:
             # #phrRemitoCompraArticulosSuscriptos, está vacío/oculto).
             seccion = self.page.locator("#LblgrdRemitoCompraArticulosSuscriptos")
             seccion.scroll_into_view_if_needed()
-            # TEMPORAL: sin .first a propósito. Hay más de un botón
-            # "Agregar" en la pantalla y el .first anterior clickeaba el de
-            # otra sección ("Artículos"). Saco el .first para que el error
-            # de "strict mode violation" liste todos los botones reales y
-            # pueda elegir el que corresponde a esta sección.
-            self.page.get_by_role("button", name=CentumTextos.BOTON_AGREGAR).click()
+            # Confirmado con error real: hay 7 botones "Agregar" en la
+            # pantalla (uno por sección). El de esta sección es
+            # #btnBuscarRemitosCompraPendientes.
+            self.page.locator("#btnBuscarRemitosCompraPendientes").click()
             self.page.wait_for_load_state("networkidle")
 
         self._paso("abrir_remitos_pendientes", accion)
@@ -284,8 +282,10 @@ class CentumBrowserClient:
 
     def agregar_concepto(self, concepto: ConceptoFaltante) -> None:
         def accion():
-            self.page.get_by_text(CentumTextos.SECCION_CONCEPTOS).scroll_into_view_if_needed()
-            self.page.get_by_role("button", name=CentumTextos.BOTON_AGREGAR).last.click()
+            # Confirmado con error real (mismo listado de 7 botones
+            # "Agregar" que reveló abrir_remitos_pendientes): el de esta
+            # sección es #btnAgregarConceptos.
+            self.page.locator("#btnAgregarConceptos").click()
             self.page.get_by_text(CentumTextos.CONCEPTO_MERCADERIAS_VARIAS).click()
             self.page.get_by_label("Observaciones").fill(concepto.observaciones)
             self.page.get_by_label("Cantidad").fill(str(concepto.cantidad))
@@ -295,8 +295,9 @@ class CentumBrowserClient:
 
     def agregar_regimen_especial(self, regimen: RegimenEspecial) -> None:
         def accion():
-            self.page.get_by_text(CentumTextos.SECCION_REGIMENES).scroll_into_view_if_needed()
-            self.page.get_by_role("button", name=CentumTextos.BOTON_AGREGAR).last.click()
+            # Confirmado con error real (mismo listado de 7 botones
+            # "Agregar"): el de esta sección es #btnAgregarRegimenesEspeciales.
+            self.page.locator("#btnAgregarRegimenesEspeciales").click()
             self.page.get_by_label("Jurisdicción").fill(regimen.jurisdiccion)
             self.page.get_by_label("Importe").fill(str(regimen.importe))
 
