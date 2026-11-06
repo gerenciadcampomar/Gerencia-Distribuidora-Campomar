@@ -164,7 +164,7 @@ def procesar_factura(pdf_path: Path, client: CentumBrowserClient, carpetas: Carp
     return "\n".join(lineas_reporte)
 
 
-def correr_watcher(carpeta_base: Path, modo: str, headless: bool) -> None:
+def correr_watcher(carpeta_base: Path, modo: str, headless: bool, proveedor_test: str | None = None) -> None:
     carpetas = Carpetas(carpeta_base)
     carpetas.crear()
     credenciales = _credenciales_desde_entorno()
@@ -184,6 +184,19 @@ def correr_watcher(carpeta_base: Path, modo: str, headless: bool) -> None:
         if modo == "solo-navegacion":
             client.ir_a_compras_crear()
             print("Navegación a Compras > Compras > Crear OK. Dejo el navegador abierto 30s.")
+            time.sleep(30)
+            return
+
+        if modo == "solo-proveedor":
+            client.ir_a_compras_crear()
+            nombre = nombre_centum(proveedor_test) if proveedor_test else None
+            if not nombre:
+                raise SystemExit(
+                    f"No hay nombre de búsqueda para '{proveedor_test}' en "
+                    f"campomar_compras/providers/nombres_centum.json, o no pasaste --proveedor-test."
+                )
+            client.elegir_proveedor(nombre)
+            print(f"Elegir proveedor '{nombre}' OK. Dejo el navegador abierto 30s.")
             time.sleep(30)
             return
 
@@ -211,13 +224,17 @@ def main() -> None:
     parser.add_argument("--carpeta-base", type=Path, default=Path(r"C:\Campomar"))
     parser.add_argument(
         "--modo",
-        choices=["solo-login", "solo-navegacion", "completo"],
+        choices=["solo-login", "solo-navegacion", "solo-proveedor", "completo"],
         default="solo-login",
         help="Empezar siempre con 'solo-login' para probar sin tocar datos.",
     )
+    parser.add_argument(
+        "--proveedor-test",
+        help="Slug de proveedor (ej. 'nosso', 'ralux') para --modo solo-proveedor.",
+    )
     parser.add_argument("--headless", action="store_true", help="Correr sin mostrar el navegador.")
     args = parser.parse_args()
-    correr_watcher(args.carpeta_base, args.modo, args.headless)
+    correr_watcher(args.carpeta_base, args.modo, args.headless, args.proveedor_test)
 
 
 if __name__ == "__main__":
