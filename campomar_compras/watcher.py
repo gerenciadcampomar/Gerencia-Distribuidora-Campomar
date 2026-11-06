@@ -181,6 +181,12 @@ def correr_watcher(carpeta_base: Path, modo: str, headless: bool) -> None:
             time.sleep(30)
             return
 
+        if modo == "solo-navegacion":
+            client.ir_a_compras_crear()
+            print("Navegación a Compras > Compras > Crear OK. Dejo el navegador abierto 30s.")
+            time.sleep(30)
+            return
+
         print(f"Vigilando {carpetas.pendientes} cada {POLL_SEGUNDOS}s (Ctrl+C para cortar)...")
         while True:
             for pdf_path in sorted(carpetas.pendientes.glob("*.pdf")):
@@ -205,7 +211,7 @@ def main() -> None:
     parser.add_argument("--carpeta-base", type=Path, default=Path(r"C:\Campomar"))
     parser.add_argument(
         "--modo",
-        choices=["solo-login", "completo"],
+        choices=["solo-login", "solo-navegacion", "completo"],
         default="solo-login",
         help="Empezar siempre con 'solo-login' para probar sin tocar datos.",
     )
