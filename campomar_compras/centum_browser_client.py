@@ -61,9 +61,12 @@ class CentumBrowserClient:
     def _capturar_debug(self, nombre: str) -> None:
         if not self.directorio_debug:
             return
-        self.directorio_debug.mkdir(parents=True, exist_ok=True)
-        marca = datetime.datetime.now().strftime("%H%M%S")
-        self.page.screenshot(path=str(self.directorio_debug / f"{marca}_{nombre}.png"))
+        try:
+            self.directorio_debug.mkdir(parents=True, exist_ok=True)
+            marca = datetime.datetime.now().strftime("%H%M%S")
+            self.page.screenshot(path=str(self.directorio_debug / f"{marca}_{nombre}.png"))
+        except Exception:  # noqa: BLE001 - nunca debe tapar el error original
+            pass
 
     def _paso(self, descripcion: str, accion):
         try:
@@ -103,8 +106,12 @@ class CentumBrowserClient:
 
     def ir_a_compras_crear(self) -> None:
         def accion():
+            # El menú "Compras" y el ítem "Compras" dentro del submenú tienen
+            # el mismo texto exacto. El primero que aparece en pantalla es el
+            # módulo (lo abrimos), el que aparece después del submenú
+            # desplegado es el ítem real que hay que clickear.
             self.page.get_by_text(CentumTextos.MENU_COMPRAS, exact=True).first.click()
-            self.page.get_by_text(CentumTextos.SUBMENU_COMPRAS, exact=True).first.click()
+            self.page.get_by_text(CentumTextos.SUBMENU_COMPRAS, exact=True).last.click()
             self.page.get_by_role("button", name=CentumTextos.BOTON_CREAR).click()
             self.page.wait_for_load_state("networkidle")
 
