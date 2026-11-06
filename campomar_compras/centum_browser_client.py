@@ -104,8 +104,29 @@ class CentumBrowserClient:
 
         self._paso("login", accion)
 
+    def _abrir_menu_lateral(self) -> None:
+        """Después del login queda la pantalla de 'Bienvenida' con el menú
+        lateral cerrado -- hay que abrirlo con el ícono de las tres rayas
+        (arriba a la izquierda) antes de poder clickear cualquier módulo."""
+        candidatos = [
+            lambda: self.page.get_by_role("button", name="menu").first,
+            lambda: self.page.locator("[aria-label*='menu' i]").first,
+            lambda: self.page.locator("header button, nav button").first,
+        ]
+        for candidato in candidatos:
+            try:
+                candidato().click(timeout=3000)
+                return
+            except Exception:  # noqa: BLE001
+                continue
+        raise PasoCentumError(
+            "No encontré el botón de las tres rayas para abrir el menú lateral. "
+            "Revisar la captura de depuración."
+        )
+
     def ir_a_compras_crear(self) -> None:
         def accion():
+            self._abrir_menu_lateral()
             # El menú "Compras" y el ítem "Compras" dentro del submenú tienen
             # el mismo texto exacto. El primero que aparece en pantalla es el
             # módulo (lo abrimos), el que aparece después del submenú
