@@ -49,6 +49,15 @@ Prototipo de la lógica de negocio, probado con datos de ejemplo:
   `(codigo_base, variante)` junto (`PedidoProveedorLine.clave_articulo`),
   probado con las 106 líneas reales del reporte.
 - `tests/` — casos con datos reales de Nossovitch, Ralux y ByC.
+- `campomar_compras/centum_browser_client.py` + `campomar_compras/watcher.py`
+  — automatización por navegador (Playwright) mientras no hay API: vigila
+  una carpeta, y por cada PDF nuevo hace login en Centum, crea la compra,
+  suscribe remitos, compara, destilda excedentes y carga Conceptos. **Nunca
+  hace click en Guardar/Cerrar** — eso lo hace siempre una persona. Ver
+  "Automatización por navegador" más abajo.
+- `campomar_compras/provider_identificacion.py` — identifica el proveedor
+  de una factura por su CUIT (`providers/cuits.json`) y extrae la fecha del
+  comprobante, para elegir los remitos pendientes más cercanos a esa fecha.
 
 ## Pendiente / a definir con más ejemplos
 
@@ -101,6 +110,71 @@ Cuando tengamos acceso a la API, este mismo `matcher`/`validator` se
 reutiliza: sólo cambia de dónde salen las líneas de remito (en vez de leer
 el JSON manual, las trae `CentumClient` directo del sistema) y quién aprieta
 "guardar" (inicialmente vos, después el propio script).
+
+## Automatización por navegador (mientras no hay API)
+
+Este es el camino que corre **en tu computadora Windows**, no en esta sesión
+en la nube (no tiene red hacia tu Centum). Pasos para instalarlo:
+
+```powershell
+# 1) Crear y activar un entorno virtual (en la carpeta del proyecto)
+python -m venv .venv
+.venv\Scripts\activate
+
+# 2) Instalar dependencias, incluido el navegador que usa Playwright
+pip install -r requirements.txt
+playwright install chromium
+
+# 3) Definir las credenciales como variables de entorno (no van en el código)
+$env:CENTUM_URL = "https://plataforma5.centum.com.ar:22480/CentumSuite/BL1/Interfaces/Login.aspx"
+$env:CENTUM_USUARIO = "tu_usuario"
+$env:CENTUM_CONTRASENA = "tu_contraseña"
+$env:CENTUM_SUCURSAL = "tu_sucursal"
+```
+
+Estructura de carpetas que arma solo (por defecto en `C:\Campomar`, configurable con `--carpeta-base`):
+
+```
+C:\Campomar\
+  facturas_pendientes\    <- soltás el PDF nuevo acá
+  facturas_procesadas\    <- el script lo mueve acá solo, ya analizado
+  reportes\                <- qué tildar, qué sacar, PASS/FAIL de cada factura
+  debug\                   <- capturas de pantalla si algún paso falla
+```
+
+**Primera prueba, sin tocar ningún dato real** (solo confirma que el login
+y la navegación funcionan):
+
+```powershell
+python -m campomar_compras.watcher --modo solo-login
+```
+
+Recién después de confirmar que eso anda, el modo completo (vigila la
+carpeta sin parar, hasta que lo cortes con Ctrl+C):
+
+```powershell
+python -m campomar_compras.watcher --modo completo
+```
+
+Por cada PDF: identifica el proveedor, entra a Centum, crea la compra,
+suscribe los remitos más cercanos a la fecha de la factura, compara línea
+por línea, destilda lo que sobra, carga los Conceptos de lo que falta, dejá
+el reporte en `reportes\` y la compra **abierta en una pestaña nueva, sin
+guardar** — revisás el reporte y entrás vos a guardarla a mano.
+
+**Importante:** los selectores (qué botón/campo busca en cada pantalla)
+están armados en base a capturas de pantalla, no al HTML real de Centum —
+es esperable que haya que ajustar alguno (`campomar_compras/centum_browser_client.py`,
+clase `CentumTextos`) la primera vez que se corra contra el sistema real.
+Cada paso que falla guarda una captura en `C:\Campomar\debug\` para
+diagnosticarlo rápido.
+
+También faltan cargar a mano, por proveedor, dos tablas pequeñas antes de
+usar un proveedor nuevo:
+- `campomar_compras/providers/nombres_centum.json`: cómo buscarlo en el
+  campo Proveedor de Centum.
+- `campomar_compras/providers/cuits.json`: su CUIT, para identificarlo
+  automáticamente desde el PDF.
 
 ## Lo que falta para que corra contra el sistema real
 
