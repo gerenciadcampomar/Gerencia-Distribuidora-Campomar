@@ -144,17 +144,27 @@ class CentumBrowserClient:
 
     # --- Cabecera de la compra ------------------------------------------
 
-    def elegir_proveedor(self, proveedor_nombre_o_numero: str) -> None:
+    def elegir_proveedor(self, razon_social_exacta: str) -> None:
         def accion():
-            # Confirmado con el error real de Playwright: es un
-            # <select id="lstProveedor"> manejado por el plugin Select2
-            # (clases "select2-hidden-accessible", atributo data-select2-id).
-            # El <select> nativo queda oculto; Select2 arma un contenedor
-            # visual con id "select2-lstProveedor-container" que hay que
-            # abrir, y adentro aparece un buscador y una lista de resultados.
-            self.page.locator("#select2-lstProveedor-container").click()
-            self.page.locator("input.select2-search__field").fill(proveedor_nombre_o_numero)
-            self.page.locator("li.select2-results__option", has_text=proveedor_nombre_o_numero).first.click()
+            # El combo Select2 de arriba del campo Proveedor NO busca contra
+            # el backend (sólo filtra lo que ya está precargado en pantalla,
+            # por eso "NOSSOVITCH" no encontraba nada ahí). La búsqueda real
+            # es una ventana aparte que se abre con la lupa -- confirmado
+            # inspeccionando: <button id="DivlstProveedor_back" ...
+            # onclick="SetearOrigenBusquedaProveedor(false);BusquedaProveedorMostrar();">.
+            # El campo Razón Social de esa ventana (#txtRazonSocialProveedor)
+            # ya se había visto en un error anterior de Playwright.
+            #
+            # OJO: puede haber varios proveedores con el MISMO CUIT (ej.
+            # "NOSSO DESCONTINUADOS", "NOSSO NACIONAL" y "NOSSOVITCH Y CIA
+            # S.A." comparten CUIT) -- por eso se busca y matchea por razón
+            # social EXACTA, no por CUIT.
+            self.page.locator("#DivlstProveedor_back").click()
+            self.page.locator("#txtRazonSocialProveedor").fill(razon_social_exacta)
+            self.page.get_by_role("button", name="Buscar").click()
+            self.page.wait_for_load_state("networkidle")
+            fila = self.page.locator("tr", has_text=razon_social_exacta)
+            fila.locator("input[type=checkbox]").first.check()
 
         self._paso("elegir_proveedor", accion)
 
