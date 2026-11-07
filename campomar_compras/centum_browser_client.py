@@ -236,6 +236,19 @@ class CentumBrowserClient:
                 celdas = [c.strip() for c in fila.locator("td").all_inner_texts()]
                 if len(celdas) >= 5 and "/" in celdas[2]:
                     remitos.append({"fecha": celdas[2], "numero": celdas[3], "sucursal": celdas[4]})
+
+            if not remitos:
+                # DIAGNÓSTICO TEMPORAL: si <table><tr><td> no encuentra nada
+                # pese a que en pantalla SÍ hay filas, probablemente esta
+                # grilla no use tags HTML de tabla clásica. Imprime pistas
+                # reales (sin adivinar) para poder ajustar el selector.
+                print(f"[diagnóstico] <table> en la página: {self.page.locator('table').count()}")
+                print(f"[diagnóstico] <tr> en la página: {len(filas)}")
+                filas_rol = self.page.get_by_role("row").all()
+                print(f"[diagnóstico] elementos con role=row: {len(filas_rol)}")
+                for i, fr in enumerate(filas_rol[:8]):
+                    print(f"[diagnóstico] row[{i}]: {fr.inner_text()!r}")
+
             return remitos
 
         return self._paso("listar_remitos_pendientes", accion)
