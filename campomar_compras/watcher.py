@@ -45,30 +45,28 @@ POLL_SEGUNDOS = 10
 
 
 def notificar_usuario(titulo: str, mensaje: str) -> None:
-    """Notificación nativa de Windows (toast). Hace falta porque el modo
-    completo corre en segundo plano -- un print en la consola no alcanza
-    si no hay nadie mirando la terminal en ese momento.
+    """Aviso nativo de Windows. Hace falta porque el modo completo corre
+    en segundo plano -- un print en la consola no alcanza si no hay
+    nadie mirando la terminal en ese momento.
 
-    OJO: la primera versión usaba win10toast, que no mostró nada y no dio
-    ningún error (biblioteca vieja, con problemas conocidos en Windows
-    actual). Cambiado a win11toast. Si vuelve a fallar, ahora se imprime
-    el motivo real en la consola en vez de quedarse en silencio -- un
-    fallo acá nunca debe tumbar el proceso."""
+    OJO: se probó primero con win10toast y después con win11toast
+    (notificaciones tipo "toast" del Centro de actividades), pero
+    Windows las descartaba en silencio -- confirmado mirando
+    Configuración > Notificaciones: un script de Python sin empaquetar
+    no queda registrado ahí como app, así que Windows nunca las
+    muestra. Un MessageBox clásico (ctypes, ya viene con Python, sin
+    librerías extra) sí funciona siempre porque no depende de ningún
+    registro ni permiso. Es modal (bloquea hasta que se cierra) --
+    buscado a propósito, para no perderse el aviso."""
     try:
-        from win11toast import toast
+        import ctypes
 
-        # app_id: sin esto, Windows a veces descarta en silencio las
-        # notificaciones que vienen de un script de Python sin identidad
-        # de app registrada (confirmado: win11toast no tiró error pero
-        # tampoco se vio nada en pantalla).
-        toast(titulo, mensaje, app_id="Campomar Compras", duration="long")
-        print(
-            "[aviso] notificación de Windows enviada. Si no aparece: revisá "
-            "Configuración > Sistema > Notificaciones (que esté permitido para "
-            "Python/la terminal) y que no esté activado el Asistente de enfoque."
-        )
-    except Exception as exc:  # noqa: BLE001
-        print(f"[aviso] no pude mostrar la notificación de Windows: {exc}")
+        MB_OK = 0x0
+        MB_ICONINFORMATION = 0x40
+        MB_SYSTEMMODAL = 0x1000  # para que aparezca siempre arriba de todo
+        ctypes.windll.user32.MessageBoxW(0, mensaje, titulo, MB_OK | MB_ICONINFORMATION | MB_SYSTEMMODAL)
+    except Exception as exc:  # noqa: BLE001 - un fallo acá nunca debe tumbar el proceso
+        print(f"[aviso] no pude mostrar el cartel de Windows: {exc}")
 
 
 @dataclass
