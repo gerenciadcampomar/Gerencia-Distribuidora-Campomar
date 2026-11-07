@@ -44,6 +44,18 @@ REGLAS_CODIGO = {"ralux": regla_codigo_ralux}
 POLL_SEGUNDOS = 10
 
 
+def notificar_usuario(titulo: str, mensaje: str) -> None:
+    """Notificación nativa de Windows (toast). Hace falta porque el modo
+    completo corre en segundo plano -- un print en la consola no alcanza
+    si no hay nadie mirando la terminal en ese momento."""
+    try:
+        from win10toast import ToastNotifier
+
+        ToastNotifier().show_toast(titulo, mensaje, duration=20, threaded=True)
+    except Exception:  # noqa: BLE001 - un fallo acá nunca debe tumbar el proceso
+        pass
+
+
 @dataclass
 class Carpetas:
     base: Path
@@ -171,6 +183,19 @@ def procesar_factura(
 
     validacion = validar_subtotal(resultados, totales_factura)
 
+    numero_comprobante = f"{punto_venta}-{numero}" if punto_venta and numero else pdf_path.name
+    if validacion.ok:
+        notificar_usuario(
+            f"Compra lista para guardar ({slug})",
+            f"Comprobante {numero_comprobante}: códigos, cantidades, precios y "
+            f"descuentos OK. Revisá y guardá en Centum.",
+        )
+    else:
+        notificar_usuario(
+            f"Compra con diferencias ({slug})",
+            f"Comprobante {numero_comprobante}: {validacion.detalle} NO guardes sin revisar.",
+        )
+
     lineas_reporte = [
         f"Factura: {pdf_path.name}",
         f"Proveedor: {slug}",
@@ -209,8 +234,11 @@ def correr_watcher(
     credenciales = _credenciales_desde_entorno()
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=headless)
-        context = browser.new_context()
+        # --start-maximized + viewport=None: si no, Chromium arranca con un
+        # viewport chico (1280x720 por defecto) adentro de una ventana más
+        # grande y queda una franja gris a la derecha/abajo sin usar.
+        browser = p.chromium.launch(headless=headless, args=None if headless else ["--start-maximized"])
+        context = browser.new_context(no_viewport=not headless)
         page = context.new_page()
         client = CentumBrowserClient(page, directorio_debug=carpetas.base / "debug")
         client.login(credenciales)
