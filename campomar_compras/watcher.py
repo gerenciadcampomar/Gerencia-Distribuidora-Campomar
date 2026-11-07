@@ -386,8 +386,20 @@ def correr_watcher(
                 numero=numero,
             )
             print(reporte)
-            print("Dejo el navegador abierto 60s. NUNCA guarda solo -- revisalo vos y guardalo a mano si está OK.")
-            time.sleep(60)
+            print(
+                "Dejo el navegador abierto hasta que vos lo cierres (sin límite de "
+                "tiempo). NUNCA guarda solo -- revisalo, guardalo a mano si está OK, "
+                "y cerrá la ventana del navegador cuando termines."
+            )
+            # Sin timeout: espera indefinidamente a que la persona cierre la
+            # pestaña/el navegador. Un timeout fijo (ej. 60s) no tiene
+            # sentido acá -- nadie puede revisar y guardar en Centum en 60
+            # segundos siempre, y esto corre sin que haya alguien mirando
+            # el reloj.
+            try:
+                page.wait_for_event("close", timeout=0)
+            except Exception:  # noqa: BLE001 - si el navegador ya se cerró de otra forma, no importa
+                pass
             return
 
         print(f"Vigilando {carpetas.pendientes} cada {POLL_SEGUNDOS}s (Ctrl+C para cortar)...")
