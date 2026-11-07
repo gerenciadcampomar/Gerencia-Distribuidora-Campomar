@@ -47,13 +47,19 @@ POLL_SEGUNDOS = 10
 def notificar_usuario(titulo: str, mensaje: str) -> None:
     """Notificación nativa de Windows (toast). Hace falta porque el modo
     completo corre en segundo plano -- un print en la consola no alcanza
-    si no hay nadie mirando la terminal en ese momento."""
-    try:
-        from win10toast import ToastNotifier
+    si no hay nadie mirando la terminal en ese momento.
 
-        ToastNotifier().show_toast(titulo, mensaje, duration=20, threaded=True)
-    except Exception:  # noqa: BLE001 - un fallo acá nunca debe tumbar el proceso
-        pass
+    OJO: la primera versión usaba win10toast, que no mostró nada y no dio
+    ningún error (biblioteca vieja, con problemas conocidos en Windows
+    actual). Cambiado a win11toast. Si vuelve a fallar, ahora se imprime
+    el motivo real en la consola en vez de quedarse en silencio -- un
+    fallo acá nunca debe tumbar el proceso."""
+    try:
+        from win11toast import toast
+
+        toast(titulo, mensaje, duration="long")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[aviso] no pude mostrar la notificación de Windows: {exc}")
 
 
 @dataclass

@@ -5,4 +5,4 @@ Pillow
 rapidfuzz
 pytest
 playwright
-win10toast
+win11toast
