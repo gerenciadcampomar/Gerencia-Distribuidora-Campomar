@@ -57,7 +57,16 @@ def notificar_usuario(titulo: str, mensaje: str) -> None:
     try:
         from win11toast import toast
 
-        toast(titulo, mensaje, duration="long")
+        # app_id: sin esto, Windows a veces descarta en silencio las
+        # notificaciones que vienen de un script de Python sin identidad
+        # de app registrada (confirmado: win11toast no tiró error pero
+        # tampoco se vio nada en pantalla).
+        toast(titulo, mensaje, app_id="Campomar Compras", duration="long")
+        print(
+            "[aviso] notificación de Windows enviada. Si no aparece: revisá "
+            "Configuración > Sistema > Notificaciones (que esté permitido para "
+            "Python/la terminal) y que no esté activado el Asistente de enfoque."
+        )
     except Exception as exc:  # noqa: BLE001
         print(f"[aviso] no pude mostrar la notificación de Windows: {exc}")
 
