@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from campomar_compras.models import ConceptoFaltante, RegimenEspecial, RemitoArticleLine
+from campomar_compras.provider_parsers import _num_eu
 
 
 class PasoCentumError(RuntimeError):
@@ -310,14 +311,16 @@ class CentumBrowserClient:
         """Lee la tabla de 'Artículos Suscriptos de Remitos de Compra' ya cargada,
         tal como quedó después de suscribir los remitos elegidos."""
 
-        # Confirmado con captura real: columnas = [tildar], Código propio
-        # Proveedor, Número Remito Compra, Cantidad Pendiente, Código
-        # Artículo, Cantidad, Cantidad Segmentada, Cantidad Unidad Nivel,
-        # Cantidad Unidad Nivel Segmentada, Cantidad Ajustada, Descripción
-        # Artículo. OJO: no se ve columna de Precio Unitario en esa
-        # captura (puede estar más a la derecha, fuera de pantalla) -- el
-        # índice 11 de precio_unitario sigue siendo una suposición a
-        # confirmar.
+        # Confirmado con fila real (BNBJ 12, remito 00009-00150930):
+        # celdas[1]=Código propio Proveedor, [2]=Número Remito Compra,
+        # [3]=Cantidad Pendiente, [4]=Código Artículo, [10]=Descripción
+        # Artículo, [17]=descuento en fracción (0,335000 = 33,5%),
+        # [22]=subtotal SIN descuento (precio de lista × cantidad). La
+        # cuenta cierra al centavo contra la factura real: 75.113,82 ×
+        # (1 - 0,335) = 49.950,69 (= precio_unitario de la factura ×
+        # cantidad). precio_unitario acá se guarda como precio de LISTA
+        # (sin descuento) y el descuento va en dto1, igual que hace
+        # matcher.py con el resto de los proveedores.
         def _leer_una_vez():
             filas = self.page.locator("table tr").all()
             lineas = []
@@ -326,21 +329,25 @@ class CentumBrowserClient:
                 # Mismo fix que en listar_remitos_pendientes: hay que
                 # apuntar a las celdas (td), no al texto de toda la fila.
                 celdas = [c.strip() for c in fila.locator("td").all_inner_texts()]
-                if len(celdas) < 6:
+                if len(celdas) < 23:
                     continue
                 if primera_celdas is None:
                     primera_celdas = celdas
                 try:
+                    cantidad = _num_eu(celdas[3])
+                    precio_lista_subtotal = _num_eu(celdas[22])
+                    descuento_pct = _num_eu(celdas[17]) * 100
                     lineas.append(
                         RemitoArticleLine(
                             codigo_articulo=celdas[4],
-                            descripcion=celdas[10] if len(celdas) > 10 else "",
+                            descripcion=celdas[10],
                             numero_remito=celdas[2],
-                            cantidad=float(celdas[5].replace(",", ".")),
-                            precio_unitario=float(celdas[11].replace(",", ".")) if len(celdas) > 11 else 0.0,
+                            cantidad=cantidad,
+                            precio_unitario=precio_lista_subtotal / cantidad if cantidad else 0.0,
+                            dto1=descuento_pct,
                         )
                     )
-                except (ValueError, IndexError):
+                except (ValueError, IndexError, ZeroDivisionError):
                     continue
             return lineas, filas, primera_celdas
 
