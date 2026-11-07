@@ -68,6 +68,24 @@ class CentumBrowserClient:
         except Exception:  # noqa: BLE001 - nunca debe tapar el error original
             pass
 
+    def _contenedor_remitos_pendientes(self):
+        """Devuelve el Page o Frame donde está la grilla "Remitos de Compra
+        Pendientes". Confirmado con DevTools que las filas tienen
+        checkboxes con id "chkRemitoCompraPendiente_<id>"; buscarlos
+        directamente en la página principal no encontró nada (0 <tr>/<td>
+        relevantes pese a verse 3 filas en pantalla), así que lo más
+        probable es que esa grilla esté dentro de un iframe -- se recorren
+        todos los frames hasta encontrar el que los tiene."""
+        if self.page.locator("input[id^='chkRemitoCompraPendiente_']").count() > 0:
+            return self.page
+        for frame in self.page.frames:
+            try:
+                if frame.locator("input[id^='chkRemitoCompraPendiente_']").count() > 0:
+                    return frame
+            except Exception:  # noqa: BLE001 - frame puede haberse destruido
+                continue
+        return self.page
+
     def _paso(self, descripcion: str, accion):
         try:
             return accion()
@@ -226,28 +244,29 @@ class CentumBrowserClient:
         Número, Sucursal, Nota, Moneda, Cotización."""
 
         def accion():
-            filas = self.page.locator("table tr").all()
+            # Confirmado con DevTools: cada fila tiene un checkbox con id
+            # "chkRemitoCompraPendiente_<id>". Usarlo como ancla es más
+            # confiable que buscar "table tr" (que no encontraba nada,
+            # probablemente porque esta grilla vive en un iframe --
+            # _contenedor_remitos_pendientes ya busca en todos los frames).
+            contenedor = self._contenedor_remitos_pendientes()
+            checks = contenedor.locator("input[id^='chkRemitoCompraPendiente_']").all()
             remitos = []
-            for fila in filas:
-                # OJO: all_inner_texts() sobre un locator de UNA fila
-                # devuelve una lista de un elemento (todo el texto de la
-                # fila junto), no separa por celda. Hay que apuntar a las
-                # celdas (td) directamente.
+            for check in checks:
+                fila = check.locator("xpath=ancestor::tr[1]")
                 celdas = [c.strip() for c in fila.locator("td").all_inner_texts()]
                 if len(celdas) >= 5 and "/" in celdas[2]:
                     remitos.append({"fecha": celdas[2], "numero": celdas[3], "sucursal": celdas[4]})
 
             if not remitos:
-                # DIAGNÓSTICO TEMPORAL: si <table><tr><td> no encuentra nada
-                # pese a que en pantalla SÍ hay filas, probablemente esta
-                # grilla no use tags HTML de tabla clásica. Imprime pistas
-                # reales (sin adivinar) para poder ajustar el selector.
-                print(f"[diagnóstico] <table> en la página: {self.page.locator('table').count()}")
-                print(f"[diagnóstico] <tr> en la página: {len(filas)}")
-                filas_rol = self.page.get_by_role("row").all()
-                print(f"[diagnóstico] elementos con role=row: {len(filas_rol)}")
-                for i, fr in enumerate(filas_rol[:8]):
-                    print(f"[diagnóstico] row[{i}]: {fr.inner_text()!r}")
+                # DIAGNÓSTICO TEMPORAL: si encontramos los checkboxes pero
+                # igual no arman remitos, imprime pistas reales (celdas
+                # crudas de la primera fila) para terminar de ajustar los
+                # índices de columna, en vez de seguir adivinando.
+                print(f"[diagnóstico] checkboxes chkRemitoCompraPendiente_*: {len(checks)}")
+                if checks:
+                    primera = checks[0].locator("xpath=ancestor::tr[1]")
+                    print(f"[diagnóstico] celdas fila 0: {primera.locator('td').all_inner_texts()!r}")
 
             return remitos
 
@@ -255,10 +274,11 @@ class CentumBrowserClient:
 
     def seleccionar_remitos(self, numeros_remito: list[str]) -> None:
         def accion():
+            contenedor = self._contenedor_remitos_pendientes()
             for numero in numeros_remito:
-                fila = self.page.locator("tr", has_text=numero)
-                fila.locator("input[type=checkbox]").first.check()
-            self.page.get_by_role("button", name=CentumTextos.BOTON_AGREGAR_Y_VOLVER).click()
+                fila = contenedor.locator("tr", has_text=numero)
+                fila.locator("input[id^='chkRemitoCompraPendiente_']").first.check()
+            contenedor.get_by_role("button", name=CentumTextos.BOTON_AGREGAR_Y_VOLVER).click()
             self.page.wait_for_load_state("networkidle")
 
         self._paso("seleccionar_remitos", accion)
