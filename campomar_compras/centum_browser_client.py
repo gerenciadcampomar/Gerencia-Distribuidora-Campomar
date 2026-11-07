@@ -304,29 +304,53 @@ class CentumBrowserClient:
         tal como quedó después de suscribir los remitos elegidos."""
 
         def accion():
+            # Confirmado con captura real: columnas = [tildar], Código
+            # propio Proveedor, Número Remito Compra, Cantidad Pendiente,
+            # Código Artículo, Cantidad, Cantidad Segmentada, Cantidad
+            # Unidad Nivel, Cantidad Unidad Nivel Segmentada, Cantidad
+            # Ajustada, Descripción Artículo. OJO: no se ve columna de
+            # Precio Unitario en esa captura (puede estar más a la derecha,
+            # fuera de la pantalla) -- el índice 11 de precio_unitario es
+            # todavía una suposición a confirmar.
             filas = self.page.locator("table tr").all()
             lineas = []
+            primera_celdas = None
             for fila in filas:
                 # Mismo fix que en listar_remitos_pendientes: hay que
                 # apuntar a las celdas (td), no al texto de toda la fila.
-                # OJO: los índices de celda de acá abajo (3, 9, 1, 4, 11)
-                # todavía NO están confirmados contra la tabla real -- hay
-                # que revisarlos cuando lleguemos a probar este paso.
                 celdas = [c.strip() for c in fila.locator("td").all_inner_texts()]
                 if len(celdas) < 6:
                     continue
+                if primera_celdas is None:
+                    primera_celdas = celdas
                 try:
                     lineas.append(
                         RemitoArticleLine(
-                            codigo_articulo=celdas[3],
-                            descripcion=celdas[9] if len(celdas) > 9 else "",
-                            numero_remito=celdas[1],
-                            cantidad=float(celdas[4].replace(",", ".")),
-                            precio_unitario=float(celdas[11].replace(",", ".")),
+                            codigo_articulo=celdas[4],
+                            descripcion=celdas[10] if len(celdas) > 10 else "",
+                            numero_remito=celdas[2],
+                            cantidad=float(celdas[5].replace(",", ".")),
+                            precio_unitario=float(celdas[11].replace(",", ".")) if len(celdas) > 11 else 0.0,
                         )
                     )
                 except (ValueError, IndexError):
                     continue
+
+            if not lineas:
+                # DIAGNÓSTICO TEMPORAL: mismo patrón que en
+                # listar_remitos_pendientes -- si "table tr" no encuentra
+                # nada (0 filas con >=6 celdas), imprime pistas reales
+                # (checkboxes de la pantalla y su id) para poder anclar la
+                # búsqueda igual que se hizo con chkRemitoCompraPendiente_*.
+                print(f"[diagnóstico] <table> en la página: {self.page.locator('table').count()}")
+                print(f"[diagnóstico] <tr> en la página: {len(filas)}")
+                if primera_celdas is not None:
+                    print(f"[diagnóstico] celdas primera fila con datos: {primera_celdas!r}")
+                checks = self.page.locator("input[type=checkbox]").all()
+                print(f"[diagnóstico] checkboxes (cualquiera) en la página: {len(checks)}")
+                for i, c in enumerate(checks[:6]):
+                    print(f"[diagnóstico] checkbox[{i}] id: {c.get_attribute('id')!r}")
+
             return lineas
 
         return self._paso("leer_articulos_cargados", accion)
