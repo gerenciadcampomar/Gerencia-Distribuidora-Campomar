@@ -235,6 +235,14 @@ class CentumBrowserClient:
             # #btnBuscarRemitosCompraPendientes.
             self.page.locator("#btnBuscarRemitosCompraPendientes").click()
             self.page.wait_for_load_state("networkidle")
+            # La grilla tarda un instante más en renderizarse después de
+            # que la red queda inactiva (confirmado: justo después de este
+            # punto el checkbox todavía no estaba, pero sí apareció unos
+            # segundos más tarde al inspeccionar con DevTools). Esperamos
+            # explícitamente a que aparezca al menos un checkbox de fila.
+            self.page.locator("input[id^='chkRemitoCompraPendiente_']").first.wait_for(
+                state="attached", timeout=15000
+            )
 
         self._paso("abrir_remitos_pendientes", accion)
 
