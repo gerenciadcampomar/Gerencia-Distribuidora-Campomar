@@ -11,14 +11,22 @@ from __future__ import annotations
 from campomar_compras.matcher import subtotal_propuesto
 from campomar_compras.models import InvoiceTotals, MatchResult, ValidationResult
 
-TOLERANCIA_PESOS = 1.0  # margen para redondeos de centavos
+TOLERANCIA_PESOS_MINIMA = 1.0  # piso para facturas chicas
+TOLERANCIA_PESOS_POR_LINEA = 0.005  # cada línea redondea a centavos (medio centavo de margen por línea)
 
 
 def validar_subtotal(
     resultados: list[MatchResult],
     totales_factura: InvoiceTotals,
-    tolerancia: float = TOLERANCIA_PESOS,
+    tolerancia: float | None = None,
 ) -> ValidationResult:
+    """tolerancia: si no se pasa, se calcula sola como el máximo entre un
+    piso fijo y el redondeo esperado por línea -- confirmado con una
+    factura real de 388 líneas que el redondeo de a centavos por línea
+    puede acumular más de $1 de diferencia sin que sea un error real."""
+    if tolerancia is None:
+        tolerancia = max(TOLERANCIA_PESOS_MINIMA, TOLERANCIA_PESOS_POR_LINEA * len(resultados))
+
     subtotal_sistema = subtotal_propuesto(resultados)
     diferencia = round(subtotal_sistema - totales_factura.subtotal_neto, 2)
 
