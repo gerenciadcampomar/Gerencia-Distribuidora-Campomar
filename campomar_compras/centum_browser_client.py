@@ -259,14 +259,22 @@ class CentumBrowserClient:
                     remitos.append({"fecha": celdas[2], "numero": celdas[3], "sucursal": celdas[4]})
 
             if not remitos:
-                # DIAGNÓSTICO TEMPORAL: si encontramos los checkboxes pero
-                # igual no arman remitos, imprime pistas reales (celdas
-                # crudas de la primera fila) para terminar de ajustar los
-                # índices de columna, en vez de seguir adivinando.
+                # DIAGNÓSTICO TEMPORAL: si tampoco aparece el checkbox en
+                # ningún frame, puede que "Agregar" haya abierto una
+                # pestaña/ventana nueva del navegador (Playwright la ve
+                # como otra Page, no como frame de self.page). Imprime
+                # pestañas abiertas y sus URLs para confirmarlo con
+                # evidencia real, sin adivinar más.
                 print(f"[diagnóstico] checkboxes chkRemitoCompraPendiente_*: {len(checks)}")
                 if checks:
                     primera = checks[0].locator("xpath=ancestor::tr[1]")
                     print(f"[diagnóstico] celdas fila 0: {primera.locator('td').all_inner_texts()!r}")
+                print(f"[diagnóstico] pestañas abiertas en el contexto: {len(self.page.context.pages)}")
+                for i, pag in enumerate(self.page.context.pages):
+                    print(f"[diagnóstico] pestaña[{i}] url: {pag.url}")
+                print(f"[diagnóstico] frames de self.page: {len(self.page.frames)}")
+                for i, fr in enumerate(self.page.frames):
+                    print(f"[diagnóstico] frame[{i}] url: {fr.url}")
 
             return remitos
 
