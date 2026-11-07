@@ -44,8 +44,16 @@ def match_remitos_contra_factura(
     for remito_line in remito_lines:
         match_encontrado: InvoiceLine | None = None
         for inv_line in invoice_restantes:
-            centum_code = mapping.get_centum_code(inv_line.codigo_proveedor)
-            if centum_code == remito_line.codigo_articulo:
+            if remito_line.codigo_propio_proveedor:
+                # Centum ya guarda el código tal como lo usa el proveedor
+                # (columna "Código propio Proveedor"), idéntico al de la
+                # factura -- comparación directa, sin pasar por la tabla de
+                # mapeo aprendida.
+                coincide = remito_line.codigo_propio_proveedor == inv_line.codigo_proveedor
+            else:
+                centum_code = mapping.get_centum_code(inv_line.codigo_proveedor)
+                coincide = centum_code == remito_line.codigo_articulo
+            if coincide:
                 match_encontrado = inv_line
                 break
 

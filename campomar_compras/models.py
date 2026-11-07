@@ -16,6 +16,10 @@ class RemitoArticleLine:
     dto1: float = 0.0
     dto2: float = 0.0
     dto3: float = 0.0
+    codigo_propio_proveedor: str = ""
+    """Código tal como lo usa el proveedor (columna "Código propio Proveedor"
+    en Centum), idéntico al que trae la factura -- cuando está disponible,
+    el matcher lo usa en vez de la tabla de mapeo aprendida (ver matcher.py)."""
 
     @property
     def subtotal(self) -> float:

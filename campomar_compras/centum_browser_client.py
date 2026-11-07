@@ -345,6 +345,12 @@ class CentumBrowserClient:
                             cantidad=cantidad,
                             precio_unitario=precio_lista_subtotal / cantidad if cantidad else 0.0,
                             dto1=descuento_pct,
+                            # Confirmado con el usuario: Centum guarda el
+                            # código tal como lo usa el proveedor (idéntico
+                            # al de la factura) en esta columna -- siempre
+                            # hay que usarlo para comparar, en vez del
+                            # Código Artículo interno.
+                            codigo_propio_proveedor=celdas[1],
                         )
                     )
                 except (ValueError, IndexError, ZeroDivisionError):

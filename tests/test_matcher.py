@@ -30,6 +30,31 @@ def test_todo_coincide(tmp_path):
     assert proponer_conceptos_faltantes(resultados) == []
 
 
+def test_matching_directo_por_codigo_propio_proveedor(tmp_path):
+    """Cuando Centum trae el "Código propio Proveedor" (confirmado real
+    para Nosso: BNBJ 12, remito 00009-00150930, factura 0015-00141664),
+    el matching usa ese código directo y no necesita la tabla aprendida."""
+    remitos = [
+        RemitoArticleLine(
+            "BNBJ12V",
+            "Juego bocinas disco 12V",
+            "00009-00150930",
+            3,
+            25037.94,
+            dto1=33.5,
+            codigo_propio_proveedor="BNBJ 12",
+        ),
+    ]
+    facturas = [
+        InvoiceLine("BNBJ 12", "Bocina blindada", 3, 16650.23),
+    ]
+
+    # Mapping vacío a propósito: no tiene aprendido "BNBJ 12" -> "BNBJ12V",
+    # así que si el match funcionara por la tabla aprendida, fallaría.
+    resultados = match_remitos_contra_factura(remitos, facturas, CodeMappingStore("nosso", providers_dir=tmp_path))
+    assert resultados[0].status == MatchStatus.OK
+
+
 def test_excedente_y_faltante(tmp_path):
     remitos = [
         RemitoArticleLine("Z837", "Impulsor", "00009-01489138", 1, 16386.1, dto1=30, dto2=20),
