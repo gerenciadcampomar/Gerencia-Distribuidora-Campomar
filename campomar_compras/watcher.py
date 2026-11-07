@@ -141,9 +141,11 @@ def procesar_factura(pdf_path: Path, client: CentumBrowserClient, carpetas: Carp
     remitos_cargados = client.leer_articulos_cargados()
     resultados = match_remitos_contra_factura(remitos_cargados, lineas_factura, mapping)
 
-    for r in resultados:
-        if r.status.value == "excedente":
-            client.destildar_articulo(r.remito_line.numero_remito, r.remito_line.codigo_articulo)
+    excedentes = [r for r in resultados if r.status.value == "excedente"]
+    for r in excedentes:
+        client.marcar_articulo_para_eliminar(r.remito_line.numero_remito, r.remito_line.codigo_articulo)
+    if excedentes:
+        client.eliminar_articulos_marcados()
 
     for concepto in proponer_conceptos_faltantes(resultados):
         client.agregar_concepto(concepto)
@@ -275,7 +277,7 @@ def correr_watcher(
             time.sleep(30)
             return
 
-        if modo == "solo-destildar":
+        if modo == "solo-eliminar":
             client.ir_a_compras_crear()
             nombre = nombre_centum(proveedor_test) if proveedor_test else None
             if not nombre:
@@ -302,11 +304,12 @@ def correr_watcher(
             client.seleccionar_remitos(numeros_elegidos)
             articulos = client.leer_articulos_cargados()
             if not articulos:
-                raise SystemExit("No se cargó ningún artículo, no hay nada para destildar de prueba.")
+                raise SystemExit("No se cargó ningún artículo, no hay nada para eliminar de prueba.")
             primero = articulos[0]
-            print(f"Voy a destildar (solo de prueba): {primero}")
-            client.destildar_articulo(primero.numero_remito, primero.codigo_articulo)
-            print("destildar_articulo OK (sin error). Dejo el navegador abierto 30s para que confirmes visualmente.")
+            print(f"Voy a marcar para eliminar (solo de prueba): {primero}")
+            client.marcar_articulo_para_eliminar(primero.numero_remito, primero.codigo_articulo)
+            client.eliminar_articulos_marcados()
+            print("eliminar_articulos_marcados OK (sin error). Dejo el navegador abierto 30s para que confirmes visualmente.")
             time.sleep(30)
             return
 
@@ -340,7 +343,7 @@ def main() -> None:
             "solo-proveedor",
             "solo-remitos",
             "solo-articulos",
-            "solo-destildar",
+            "solo-eliminar",
             "completo",
         ],
         default="solo-login",

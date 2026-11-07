@@ -52,7 +52,7 @@ Prototipo de la lógica de negocio, probado con datos de ejemplo:
 - `campomar_compras/centum_browser_client.py` + `campomar_compras/watcher.py`
   — automatización por navegador (Playwright) mientras no hay API: vigila
   una carpeta, y por cada PDF nuevo hace login en Centum, crea la compra,
-  suscribe remitos, compara, destilda excedentes y carga Conceptos. **Nunca
+  suscribe remitos, compara, tilda y elimina excedentes, y carga Conceptos. **Nunca
   hace click en Guardar/Cerrar** — eso lo hace siempre una persona. Ver
   "Automatización por navegador" más abajo.
 - `campomar_compras/provider_identificacion.py` — identifica el proveedor
@@ -172,7 +172,8 @@ python -m campomar_compras.watcher --modo completo
 
 Por cada PDF: identifica el proveedor, entra a Centum, crea la compra,
 suscribe los remitos más cercanos a la fecha de la factura, compara línea
-por línea, destilda lo que sobra, carga los Conceptos de lo que falta, dejá
+por línea, tilda y elimina lo que sobra (queda sin suscribir, se puede
+traer en un comprobante siguiente), carga los Conceptos de lo que falta, dejá
 el reporte en `reportes\` y la compra **abierta en una pestaña nueva, sin
 guardar** — revisás el reporte y entrás vos a guardarla a mano.
 

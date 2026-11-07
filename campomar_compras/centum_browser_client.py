@@ -389,12 +389,32 @@ class CentumBrowserClient:
 
         return self._paso("leer_articulos_cargados", accion)
 
-    def destildar_articulo(self, numero_remito: str, codigo_articulo: str) -> None:
+    def marcar_articulo_para_eliminar(self, numero_remito: str, codigo_articulo: str) -> None:
+        """Tilda un artículo excedente para sacarlo del comprobante actual
+        (queda sin suscribir, se puede traer en uno siguiente). Confirmado
+        con el usuario: acá "tildar" es al revés de lo que se podría
+        suponer -- significa marcar PARA ELIMINAR, no para incluir. Hay
+        que tildar todos los excedentes y recién al final llamar a
+        eliminar_articulos_marcados() una sola vez (no un click de
+        eliminar por artículo)."""
+
         def accion():
             fila = self.page.locator("tr", has_text=codigo_articulo).filter(has_text=numero_remito)
-            fila.locator("input[type=checkbox]").first.uncheck()
+            fila.locator("input[type=checkbox]").first.check()
 
-        self._paso(f"destildar_{codigo_articulo}", accion)
+        self._paso(f"marcar_para_eliminar_{codigo_articulo}", accion)
+
+    def eliminar_articulos_marcados(self) -> None:
+        """Saca del comprobante actual todos los artículos tildados con
+        marcar_articulo_para_eliminar. Confirmado con DevTools: botón sin
+        texto (ícono de tacho), id real btnEliminarRemitoCompraArticulos,
+        onclick="EliminarRemitoCompraArticulosSuscriptos();"."""
+
+        def accion():
+            self.page.locator("#btnEliminarRemitoCompraArticulos").click()
+            self.page.wait_for_load_state("networkidle")
+
+        self._paso("eliminar_articulos_marcados", accion)
 
     # --- Conceptos y regímenes especiales -------------------------------
 
