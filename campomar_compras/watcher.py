@@ -241,6 +241,40 @@ def correr_watcher(
             time.sleep(30)
             return
 
+        if modo == "solo-articulos":
+            client.ir_a_compras_crear()
+            nombre = nombre_centum(proveedor_test) if proveedor_test else None
+            if not nombre:
+                raise SystemExit(
+                    f"No hay nombre de búsqueda para '{proveedor_test}' en "
+                    f"campomar_compras/providers/nombres_centum.json, o no pasaste --proveedor-test."
+                )
+            client.elegir_proveedor(nombre)
+            client.completar_cabecera(
+                tipo_comprobante=tipo_comprobante or "Factura de Compras",
+                fecha_documento=fecha_documento,
+                punto_venta=punto_venta,
+                numero=numero,
+            )
+            client.abrir_remitos_pendientes()
+            remitos = client.listar_remitos_pendientes()
+            fecha_factura = None
+            if fecha_documento:
+                import datetime as _dt
+
+                d, m, a = (int(x) for x in fecha_documento.split("/"))
+                fecha_factura = _dt.date(a, m, d)
+            numeros_elegidos = _elegir_remitos_mas_cercanos(remitos, fecha_factura)
+            print(f"Remitos elegidos (ventana de {RANGO_DIAS_REMITOS} días): {numeros_elegidos}")
+            client.seleccionar_remitos(numeros_elegidos)
+            articulos = client.leer_articulos_cargados()
+            print(f"Artículos cargados: {len(articulos)}")
+            for a in articulos:
+                print(f"  {a}")
+            print("Dejo el navegador abierto 30s.")
+            time.sleep(30)
+            return
+
         print(f"Vigilando {carpetas.pendientes} cada {POLL_SEGUNDOS}s (Ctrl+C para cortar)...")
         while True:
             for pdf_path in sorted(carpetas.pendientes.glob("*.pdf")):
@@ -265,7 +299,7 @@ def main() -> None:
     parser.add_argument("--carpeta-base", type=Path, default=Path(r"C:\Campomar"))
     parser.add_argument(
         "--modo",
-        choices=["solo-login", "solo-navegacion", "solo-proveedor", "solo-remitos", "completo"],
+        choices=["solo-login", "solo-navegacion", "solo-proveedor", "solo-remitos", "solo-articulos", "completo"],
         default="solo-login",
         help="Empezar siempre con 'solo-login' para probar sin tocar datos.",
     )
