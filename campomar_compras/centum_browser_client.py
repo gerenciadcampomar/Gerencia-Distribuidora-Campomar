@@ -221,15 +221,21 @@ class CentumBrowserClient:
         self._paso("abrir_remitos_pendientes", accion)
 
     def listar_remitos_pendientes(self) -> list[dict]:
-        """Lee la tabla 'Remitos de Compra Pendientes' (fecha, número, sucursal)."""
+        """Lee la tabla 'Remitos de Compra Pendientes'. Columnas reales
+        confirmadas por captura: [tildar], Copiar Datos Cabecera, Fecha,
+        Número, Sucursal, Nota, Moneda, Cotización."""
 
         def accion():
             filas = self.page.locator("table tr").all()
             remitos = []
             for fila in filas:
-                celdas = [c.strip() for c in fila.all_inner_texts()]
-                if len(celdas) >= 3 and "/" in celdas[0]:
-                    remitos.append({"fecha": celdas[0], "numero": celdas[1], "sucursal": celdas[2]})
+                # OJO: all_inner_texts() sobre un locator de UNA fila
+                # devuelve una lista de un elemento (todo el texto de la
+                # fila junto), no separa por celda. Hay que apuntar a las
+                # celdas (td) directamente.
+                celdas = [c.strip() for c in fila.locator("td").all_inner_texts()]
+                if len(celdas) >= 5 and "/" in celdas[2]:
+                    remitos.append({"fecha": celdas[2], "numero": celdas[3], "sucursal": celdas[4]})
             return remitos
 
         return self._paso("listar_remitos_pendientes", accion)
@@ -252,7 +258,12 @@ class CentumBrowserClient:
             filas = self.page.locator("table tr").all()
             lineas = []
             for fila in filas:
-                celdas = [c.strip() for c in fila.all_inner_texts()]
+                # Mismo fix que en listar_remitos_pendientes: hay que
+                # apuntar a las celdas (td), no al texto de toda la fila.
+                # OJO: los índices de celda de acá abajo (3, 9, 1, 4, 11)
+                # todavía NO están confirmados contra la tabla real -- hay
+                # que revisarlos cuando lleguemos a probar este paso.
+                celdas = [c.strip() for c in fila.locator("td").all_inner_texts()]
                 if len(celdas) < 6:
                     continue
                 try:

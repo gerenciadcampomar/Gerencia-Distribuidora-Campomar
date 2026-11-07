@@ -76,6 +76,19 @@ Prototipo de la lógica de negocio, probado con datos de ejemplo:
   (`repartir_segmentacion`) está listo, pero falta definir el flujo
   concreto de cuándo y cómo se decide el reparto entre la compra "oficial"
   y la "alternativa" para un mismo pedido.
+- **Reintento con "Actualizar Precios de Lista de Compra"**: en la pantalla
+  de Remitos de Compra Pendientes hay un check "Actualizar Precios de Lista
+  de Compra". Los precios del remito de compra en Centum quedan congelados
+  desde la orden de compra; si el proveedor aumentó precios entre la orden
+  y la entrega, el remito en sistema puede no coincidir con la factura real
+  aunque los artículos y cantidades sí coincidan. Flujo a implementar: 1)
+  primer intento sin tocar precios; 2) si códigos y cantidades coinciden
+  pero el subtotal no cierra porque el sistema está más barato que la
+  factura, repetir tildando ese check (trae los precios de lista
+  actualizados) y volver a comparar; 3) si ahora cierra, avisar al usuario
+  que se tuvo que actualizar precios para que coincida (no debe pasar
+  desapercibido). Pendiente hasta calibrar `seleccionar_remitos` /
+  `leer_articulos_cargados` / el matching contra el sistema real.
 
 ## Uso en modo manual (hoy)
 

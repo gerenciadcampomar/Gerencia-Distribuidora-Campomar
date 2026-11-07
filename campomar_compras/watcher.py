@@ -83,20 +83,28 @@ def _credenciales_desde_entorno() -> CentumCredenciales:
     )
 
 
+RANGO_DIAS_REMITOS = 21  # "tres semanas", confirmado con el usuario.
+
+
 def _elegir_remitos_mas_cercanos(remitos_pendientes: list[dict], fecha_factura) -> list[str]:
-    """Hasta tener más ejemplos de cómo se decide esto en la práctica, por
-    ahora toma TODOS los remitos pendientes del proveedor que estén en o
-    antes de la fecha de la factura, ordenados del más cercano al más
-    lejano. Revisar/ajustar este criterio con casos reales."""
+    """Toma los remitos pendientes del proveedor cuya fecha esté dentro de
+    RANGO_DIAS_REMITOS días de la fecha de la factura (antes o después,
+    porque el remito puede llegar un poco después de emitida la factura),
+    ordenados del más cercano al más lejano. Si no hay fecha de factura,
+    los toma todos (hay que revisarlo a mano en ese caso)."""
     import datetime as _dt
 
     def _parse(fecha_str: str) -> _dt.date:
         d, m, a = (int(x) for x in fecha_str.split("/"))
         return _dt.date(a, m, d)
 
-    candidatos = [r for r in remitos_pendientes if fecha_factura is None or _parse(r["fecha"]) <= fecha_factura]
-    if fecha_factura is not None:
-        candidatos.sort(key=lambda r: abs((_parse(r["fecha"]) - fecha_factura).days))
+    if fecha_factura is None:
+        return [r["numero"] for r in remitos_pendientes]
+
+    candidatos = [
+        r for r in remitos_pendientes if abs((_parse(r["fecha"]) - fecha_factura).days) <= RANGO_DIAS_REMITOS
+    ]
+    candidatos.sort(key=lambda r: abs((_parse(r["fecha"]) - fecha_factura).days))
     return [r["numero"] for r in candidatos]
 
 
