@@ -296,6 +296,13 @@ class CentumBrowserClient:
                 fila.locator("input[id^='chkRemitoCompraPendiente_']").first.check()
             contenedor.get_by_role("button", name=CentumTextos.BOTON_AGREGAR_Y_VOLVER).click()
             self.page.wait_for_load_state("networkidle")
+            # Mismo problema de timing que en abrir_remitos_pendientes: tras
+            # volver a la pantalla principal, la grilla "Artículos
+            # Suscriptos de Remitos de Compra" tarda un instante más en
+            # refrescarse con los artículos recién suscriptos (confirmado:
+            # leer_articulos_cargados encontró todavía los datos viejos de
+            # "Remitos Pendientes" justo después de este click).
+            self.page.wait_for_timeout(3000)
 
         self._paso("seleccionar_remitos", accion)
 
@@ -303,15 +310,15 @@ class CentumBrowserClient:
         """Lee la tabla de 'Artículos Suscriptos de Remitos de Compra' ya cargada,
         tal como quedó después de suscribir los remitos elegidos."""
 
-        def accion():
-            # Confirmado con captura real: columnas = [tildar], Código
-            # propio Proveedor, Número Remito Compra, Cantidad Pendiente,
-            # Código Artículo, Cantidad, Cantidad Segmentada, Cantidad
-            # Unidad Nivel, Cantidad Unidad Nivel Segmentada, Cantidad
-            # Ajustada, Descripción Artículo. OJO: no se ve columna de
-            # Precio Unitario en esa captura (puede estar más a la derecha,
-            # fuera de la pantalla) -- el índice 11 de precio_unitario es
-            # todavía una suposición a confirmar.
+        # Confirmado con captura real: columnas = [tildar], Código propio
+        # Proveedor, Número Remito Compra, Cantidad Pendiente, Código
+        # Artículo, Cantidad, Cantidad Segmentada, Cantidad Unidad Nivel,
+        # Cantidad Unidad Nivel Segmentada, Cantidad Ajustada, Descripción
+        # Artículo. OJO: no se ve columna de Precio Unitario en esa
+        # captura (puede estar más a la derecha, fuera de pantalla) -- el
+        # índice 11 de precio_unitario sigue siendo una suposición a
+        # confirmar.
+        def _leer_una_vez():
             filas = self.page.locator("table tr").all()
             lineas = []
             primera_celdas = None
@@ -335,13 +342,27 @@ class CentumBrowserClient:
                     )
                 except (ValueError, IndexError):
                     continue
+            return lineas, filas, primera_celdas
+
+        def accion():
+            lineas, filas, primera_celdas = _leer_una_vez()
+
+            if not lineas:
+                # Reintento: tras suscribir el remito, la grilla puede
+                # tardar más en refrescarse si trae muchas filas (388 en
+                # la prueba real) -- confirmado que justo después del
+                # click todavía se veían los datos viejos de la pantalla
+                # anterior.
+                self.page.wait_for_timeout(3000)
+                lineas, filas, primera_celdas = _leer_una_vez()
 
             if not lineas:
                 # DIAGNÓSTICO TEMPORAL: mismo patrón que en
                 # listar_remitos_pendientes -- si "table tr" no encuentra
-                # nada (0 filas con >=6 celdas), imprime pistas reales
-                # (checkboxes de la pantalla y su id) para poder anclar la
-                # búsqueda igual que se hizo con chkRemitoCompraPendiente_*.
+                # nada (0 filas con >=6 celdas) ni con el reintento,
+                # imprime pistas reales (checkboxes de la pantalla y su
+                # id) para poder anclar la búsqueda igual que se hizo con
+                # chkRemitoCompraPendiente_*.
                 print(f"[diagnóstico] <table> en la página: {self.page.locator('table').count()}")
                 print(f"[diagnóstico] <tr> en la página: {len(filas)}")
                 if primera_celdas is not None:
