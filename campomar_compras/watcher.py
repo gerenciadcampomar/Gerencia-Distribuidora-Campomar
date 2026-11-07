@@ -108,8 +108,20 @@ def _elegir_remitos_mas_cercanos(remitos_pendientes: list[dict], fecha_factura) 
     return [r["numero"] for r in candidatos]
 
 
-def procesar_factura(pdf_path: Path, client: CentumBrowserClient, carpetas: Carpetas) -> str:
-    """Devuelve el texto del reporte generado para esta factura."""
+def procesar_factura(
+    pdf_path: Path,
+    client: CentumBrowserClient,
+    carpetas: Carpetas,
+    tipo_comprobante: str = "Factura de Compras",
+    punto_venta: str | None = None,
+    numero: str | None = None,
+) -> str:
+    """Devuelve el texto del reporte generado para esta factura.
+
+    OJO: punto_venta y numero todavía hay que pasarlos a mano (leídos del
+    PDF por una persona) -- falta un extractor automático del número de
+    comprobante (ej. "0015-00141664") para el modo completo. La fecha sí
+    se extrae sola del PDF."""
     slug = identificar_proveedor(pdf_path)
     if slug is None or slug not in PROVIDER_PARSERS:
         return (
@@ -129,10 +141,17 @@ def procesar_factura(pdf_path: Path, client: CentumBrowserClient, carpetas: Carp
     lineas_factura = parse_lineas(pdf_path)
     totales_factura = parse_totales(pdf_path)
     fecha_factura = extraer_fecha_factura(pdf_path)
+    fecha_documento = fecha_factura.strftime("%d/%m/%Y") if fecha_factura else None
     mapping = CodeMappingStore(slug, regla=REGLAS_CODIGO.get(slug))
 
     client.ir_a_compras_crear()
     client.elegir_proveedor(nombre_buscar)
+    client.completar_cabecera(
+        tipo_comprobante=tipo_comprobante,
+        fecha_documento=fecha_documento,
+        punto_venta=punto_venta,
+        numero=numero,
+    )
     client.abrir_remitos_pendientes()
     remitos_pendientes = client.listar_remitos_pendientes()
     numeros_elegidos = _elegir_remitos_mas_cercanos(remitos_pendientes, fecha_factura)
@@ -183,6 +202,7 @@ def correr_watcher(
     fecha_documento: str | None = None,
     punto_venta: str | None = None,
     numero: str | None = None,
+    factura_pdf: str | None = None,
 ) -> None:
     carpetas = Carpetas(carpeta_base)
     carpetas.crear()
@@ -313,6 +333,22 @@ def correr_watcher(
             time.sleep(30)
             return
 
+        if modo == "solo-validar":
+            if not factura_pdf:
+                raise SystemExit("Pasá --factura-pdf con la ruta del PDF de la factura real para --modo solo-validar.")
+            reporte = procesar_factura(
+                Path(factura_pdf),
+                client,
+                carpetas,
+                tipo_comprobante=tipo_comprobante or "Factura de Compras",
+                punto_venta=punto_venta,
+                numero=numero,
+            )
+            print(reporte)
+            print("Dejo el navegador abierto 60s. NUNCA guarda solo -- revisalo vos y guardalo a mano si está OK.")
+            time.sleep(60)
+            return
+
         print(f"Vigilando {carpetas.pendientes} cada {POLL_SEGUNDOS}s (Ctrl+C para cortar)...")
         while True:
             for pdf_path in sorted(carpetas.pendientes.glob("*.pdf")):
@@ -344,6 +380,7 @@ def main() -> None:
             "solo-remitos",
             "solo-articulos",
             "solo-eliminar",
+            "solo-validar",
             "completo",
         ],
         default="solo-login",
@@ -355,8 +392,9 @@ def main() -> None:
     )
     parser.add_argument("--tipo-comprobante", default="Factura de Compras")
     parser.add_argument("--fecha-documento", help="DD/MM/AAAA, para --modo solo-remitos.")
-    parser.add_argument("--punto-venta", help="Para --modo solo-remitos.")
-    parser.add_argument("--numero", help="Para --modo solo-remitos.")
+    parser.add_argument("--punto-venta", help="Para --modo solo-remitos / solo-validar.")
+    parser.add_argument("--numero", help="Para --modo solo-remitos / solo-validar.")
+    parser.add_argument("--factura-pdf", help="Ruta al PDF real de la factura, para --modo solo-validar.")
     parser.add_argument("--headless", action="store_true", help="Correr sin mostrar el navegador.")
     args = parser.parse_args()
     correr_watcher(
@@ -368,6 +406,7 @@ def main() -> None:
         args.fecha_documento,
         args.punto_venta,
         args.numero,
+        args.factura_pdf,
     )
 
 
