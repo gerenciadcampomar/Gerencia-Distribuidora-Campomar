@@ -46,13 +46,30 @@ def _cargar_tabla_cuits() -> dict[str, str]:
     return json.loads(CUITS_PATH.read_text(encoding="utf-8"))
 
 
+def _identificar_por_nombre_archivo(pdf_path: Path) -> str | None:
+    """Respaldo para comprobantes que no traen CUIT ni ningún dato
+    identificatorio adentro (pasa con algunos remitos/vales escaneados):
+    si el nombre del archivo contiene el slug de un proveedor conocido
+    (ej. "Nosso_factura123.pdf" -> contiene "nosso"), lo usa. No hace
+    falta un nombre exacto ni mayúsculas/minúsculas."""
+    nombre = pdf_path.stem.lower()
+    for slug in set(_cargar_tabla_cuits().values()):
+        if slug in nombre:
+            return slug
+    return None
+
+
 def identificar_proveedor(pdf_path: Path) -> str | None:
-    """Devuelve el slug de proveedor (ej. 'nosso', 'ralux') a partir del PDF,
-    o None si el CUIT no está en la tabla todavía."""
+    """Devuelve el slug de proveedor (ej. 'nosso', 'ralux') a partir del
+    PDF. Primero intenta por el CUIT que trae el documento; si no lo
+    encuentra (o el CUIT no está en la tabla), prueba por el nombre del
+    archivo como respaldo. Devuelve None si ninguna de las dos funciona."""
     cuit = extraer_cuit_proveedor(pdf_path)
-    if cuit is None:
-        return None
-    return _cargar_tabla_cuits().get(cuit)
+    if cuit is not None:
+        slug = _cargar_tabla_cuits().get(cuit)
+        if slug is not None:
+            return slug
+    return _identificar_por_nombre_archivo(pdf_path)
 
 
 def extraer_fecha_factura(pdf_path: Path) -> datetime.date | None:
