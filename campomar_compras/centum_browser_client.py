@@ -260,6 +260,21 @@ class CentumBrowserClient:
 
         self._paso("completar_cabecera", accion)
 
+    def fijar_fecha_documento(self, fecha_documento: str) -> None:
+        """Vuelve a escribir Fecha Documento. El usuario notó que cuando
+        una persona edita este campo a mano, Centum sincroniza sola
+        "Fecha Imputación" con el mismo valor -- pero esa sincronización
+        no se dispara con el fill() del script, así que Fecha Documento
+        puede quedar pisada con la fecha de hoy por algún paso posterior
+        (remitos, conceptos, regímenes). Por eso se vuelve a fijar al
+        final de todo el proceso, en vez de confiar en que quede como se
+        dejó en completar_cabecera()."""
+
+        def accion():
+            self.page.locator("#txtFechaDocumento").fill(fecha_documento)
+
+        self._paso("fijar_fecha_documento", accion)
+
     # --- Remitos / artículos ------------------------------------------
 
     def abrir_remitos_pendientes(self) -> None:

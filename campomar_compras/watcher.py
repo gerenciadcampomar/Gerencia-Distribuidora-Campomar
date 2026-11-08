@@ -223,6 +223,15 @@ def procesar_factura(
             client.marcar_regimen_especial(etiqueta, regimen.importe)
         client.confirmar_regimenes_especiales()
 
+    if fecha_documento:
+        # El usuario notó que "Fecha Documento" puede quedar pisada con
+        # la fecha de hoy por algún paso posterior (remitos, conceptos,
+        # regímenes) -- la sincronización automática con "Fecha
+        # Imputación" que hace Centum cuando una persona edita el campo
+        # a mano no se dispara con el fill() del script. Se vuelve a
+        # fijar acá, al final de todo, para asegurar que quede bien.
+        client.fijar_fecha_documento(fecha_documento)
+
     validacion = validar_subtotal(resultados, totales_factura)
 
     numero_comprobante = f"{punto_venta}-{numero}" if punto_venta and numero else pdf_path.name
