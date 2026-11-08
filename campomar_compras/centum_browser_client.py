@@ -343,7 +343,10 @@ class CentumBrowserClient:
         de decidir si guarda."""
 
         def accion():
-            self.page.get_by_text("Totales", exact=True).scroll_into_view_if_needed()
+            # Confirmado con error real: hay dos elementos con el texto
+            # "Totales" (#phrTotales y #phrTotalesSegmentado) -- se usa el
+            # id exacto de la sección principal.
+            self.page.locator("#phrTotales").scroll_into_view_if_needed()
 
         self._paso("mostrar_totales", accion)
 
