@@ -302,6 +302,16 @@ class CentumBrowserClient:
                             f"calendario (quedó en '{campo.input_value()}') -- revisala "
                             "y corregila a mano en Centum antes de guardar."
                         )
+                    # El Tab mueve el foco y el valor queda bien, pero el
+                    # calendario desplegable sigue mostrándose igual --
+                    # confirmado con captura real. Este widget se cierra con
+                    # un click afuera, no perdiendo el foco. Se clickea un
+                    # texto neutro de la pantalla (no interactivo) para
+                    # simular eso.
+                    try:
+                        self.page.get_by_text("Datos Comprobante", exact=True).click()
+                    except Exception:
+                        pass
                     return
             print(
                 f"[aviso] Fecha Documento no quedó en {fecha_documento} después de "
