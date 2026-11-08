@@ -193,6 +193,17 @@ class CentumBrowserClient:
             # (confirmado inspeccionando). Tildar/clickear buscando un
             # input[type=checkbox] no hacía nada porque ese elemento no existe.
             filas = self.page.locator("tr:has(button:has(i.fa-check-square))")
+            # OJO: a diferencia de .click(), .count() NO espera a que la
+            # grilla termine de renderizar (no hace auto-wait) -- confirmado
+            # con un caso real: Centum SÍ encontró 2 proveedores buscando
+            # por ese mismo CUIT a mano, pero acá daba 0 porque contaba
+            # demasiado rápido, antes de que aparecieran las filas (mismo
+            # problema de timing que tuvimos con la grilla de Remitos
+            # Pendientes). Hay que esperar explícitamente.
+            try:
+                filas.first.wait_for(state="attached", timeout=15000)
+            except Exception:  # noqa: BLE001 - si de verdad no hay resultados, cantidad da 0 abajo
+                pass
             cantidad = filas.count()
             if cantidad == 0:
                 raise PasoCentumError(f"No se encontró ningún proveedor con CUIT {cuit} en Centum.")
