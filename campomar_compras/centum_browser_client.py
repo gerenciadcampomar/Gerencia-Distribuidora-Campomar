@@ -336,6 +336,17 @@ class CentumBrowserClient:
 
         self._paso("fijar_fecha_documento", accion)
 
+    def mostrar_totales(self) -> None:
+        """Deja la pantalla scrolleada en la sección Totales (subtotal,
+        IVA, Regímenes Especiales, total) al terminar todo el proceso,
+        para que la persona que revisa no tenga que buscarla a mano antes
+        de decidir si guarda."""
+
+        def accion():
+            self.page.get_by_text("Totales", exact=True).scroll_into_view_if_needed()
+
+        self._paso("mostrar_totales", accion)
+
     # --- Remitos / artículos ------------------------------------------
 
     def abrir_remitos_pendientes(self) -> None:

@@ -232,6 +232,11 @@ def procesar_factura(
         # fijar acá, al final de todo, para asegurar que quede bien.
         client.fijar_fecha_documento(fecha_documento)
 
+    # Deja la pantalla en la sección Totales (subtotal, IVA, Regímenes
+    # Especiales, total) para que quien revisa la vea de entrada, sin
+    # tener que scrollear.
+    client.mostrar_totales()
+
     validacion = validar_subtotal(resultados, totales_factura)
 
     numero_comprobante = f"{punto_venta}-{numero}" if punto_venta and numero else pdf_path.name
