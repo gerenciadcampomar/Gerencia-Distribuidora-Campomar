@@ -163,33 +163,52 @@ class CentumBrowserClient:
 
     # --- Cabecera de la compra ------------------------------------------
 
-    def elegir_proveedor(self, razon_social_exacta: str) -> None:
+    def elegir_proveedor(self, cuit: str, razon_social_pista: str | None = None) -> None:
+        """Busca al proveedor por CUIT (sin guiones, 11 dígitos) -- más
+        confiable que por Razón Social: el nombre impreso en la factura
+        puede no coincidir exacto con cómo está cargado en Centum
+        (confirmado con DOLZ: "DOLZ ARGENTINA S.A.U." no encontró nada
+        buscando por razón social). Si la búsqueda por CUIT trae más de
+        un proveedor (puede pasar, como con Nossovitch: "NOSSO
+        DESCONTINUADOS", "NOSSO NACIONAL" y "NOSSOVITCH Y CIA S.A."
+        comparten CUIT), se refina filtrando por razon_social_pista."""
+
         def accion():
             # El combo Select2 de arriba del campo Proveedor NO busca contra
-            # el backend (sólo filtra lo que ya está precargado en pantalla,
-            # por eso "NOSSOVITCH" no encontraba nada ahí). La búsqueda real
-            # es una ventana aparte que se abre con la lupa -- confirmado
-            # inspeccionando: <button id="BtnlstProveedor_Back" ...
-            # onclick="SetearOrigenBusquedaProveedor(false);BusquedaProveedorMostrar();">.
-            # El campo Razón Social de esa ventana es #txtBusquedaProveedorRazonSocial
-            # (confirmado inspeccionando -- es distinto de #txtRazonSocialProveedor,
-            # que es otro campo oculto en otro lado de la página).
-            #
-            # OJO: puede haber varios proveedores con el MISMO CUIT (ej.
-            # "NOSSO DESCONTINUADOS", "NOSSO NACIONAL" y "NOSSOVITCH Y CIA
-            # S.A." comparten CUIT) -- por eso se busca y matchea por razón
-            # social EXACTA, no por CUIT.
+            # el backend (sólo filtra lo que ya está precargado en pantalla).
+            # La búsqueda real es una ventana aparte que se abre con la lupa
+            # -- confirmado inspeccionando: <button id="BtnlstProveedor_Back"
+            # ... onclick="SetearOrigenBusquedaProveedor(false);
+            # BusquedaProveedorMostrar();">. El campo CUIT de esa ventana es
+            # #txtBusquedaProveedorCUIT (confirmado inspeccionando,
+            # minlength=11 maxlength=11 -- sin guiones).
             self.page.locator("#BtnlstProveedor_Back").click()
-            self.page.locator("#txtBusquedaProveedorRazonSocial").fill(razon_social_exacta)
+            self.page.locator("#txtBusquedaProveedorCUIT").fill(cuit)
             self.page.get_by_role("button", name="Buscar").click()
             self.page.wait_for_load_state("networkidle")
+
             # OJO: la columna "Seleccionar" NO es un checkbox real -- es un
             # <button onclick="BusquedaProveedorSeleccionarProveedor(id, razon)">
             # con un ícono que visualmente parece un checkbox tildado
             # (confirmado inspeccionando). Tildar/clickear buscando un
             # input[type=checkbox] no hacía nada porque ese elemento no existe.
-            fila = self.page.locator("tr", has_text=razon_social_exacta)
-            fila.locator("button:has(i.fa-check-square)").first.click()
+            filas = self.page.locator("tr:has(button:has(i.fa-check-square))")
+            cantidad = filas.count()
+            if cantidad == 0:
+                raise PasoCentumError(f"No se encontró ningún proveedor con CUIT {cuit} en Centum.")
+            if cantidad > 1:
+                if not razon_social_pista:
+                    raise PasoCentumError(
+                        f"La búsqueda por CUIT {cuit} encontró {cantidad} proveedores "
+                        f"y no hay razón social para desambiguar cuál usar."
+                    )
+                filas = filas.filter(has_text=razon_social_pista)
+                if filas.count() != 1:
+                    raise PasoCentumError(
+                        f"La búsqueda por CUIT {cuit} + '{razon_social_pista}' encontró "
+                        f"{filas.count()} proveedores (se esperaba exactamente 1)."
+                    )
+            filas.locator("button:has(i.fa-check-square)").first.click()
             self.page.wait_for_load_state("networkidle")
 
         self._paso("elegir_proveedor", accion)

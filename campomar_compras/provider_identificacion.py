@@ -87,6 +87,18 @@ def extraer_fecha_factura(pdf_path: Path) -> datetime.date | None:
         return None
 
 
+def cuit_proveedor(slug_proveedor: str) -> str | None:
+    """CUIT (sin guiones) del proveedor a partir de su slug -- inverso de
+    la tabla de cuits.json. Se usa para buscar al proveedor en Centum,
+    más confiable que por Razón Social (la razón social impresa en la
+    factura puede no coincidir exacto con cómo está cargada en
+    Centum)."""
+    for cuit, slug in _cargar_tabla_cuits().items():
+        if slug == slug_proveedor:
+            return cuit
+    return None
+
+
 def nombre_centum(slug_proveedor: str) -> str | None:
     """Nombre tal como hay que buscarlo en el campo Proveedor de Centum.
     Hay que cargarlo a mano por proveedor la primera vez (no se puede

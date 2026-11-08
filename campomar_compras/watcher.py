@@ -32,6 +32,7 @@ from campomar_compras.centum_browser_client import CentumBrowserClient, CentumCr
 from campomar_compras.code_mapping import CodeMappingStore
 from campomar_compras.matcher import match_remitos_contra_factura, proponer_conceptos_faltantes
 from campomar_compras.provider_identificacion import (
+    cuit_proveedor,
     extraer_fecha_factura,
     identificar_proveedor,
     nombre_centum,
@@ -161,6 +162,9 @@ def procesar_factura(
             f"NO PROCESADO: proveedor '{slug}' identificado, pero falta su nombre "
             f"de búsqueda en campomar_compras/providers/nombres_centum.json."
         )
+    cuit_buscar = cuit_proveedor(slug)
+    if cuit_buscar is None:
+        return f"NO PROCESADO: proveedor '{slug}' identificado, pero no tiene CUIT en cuits.json."
 
     parse_lineas, parse_totales = PROVIDER_PARSERS[slug]
     lineas_factura = parse_lineas(pdf_path)
@@ -170,7 +174,7 @@ def procesar_factura(
     mapping = CodeMappingStore(slug, regla=REGLAS_CODIGO.get(slug))
 
     client.ir_a_compras_crear()
-    client.elegir_proveedor(nombre_buscar)
+    client.elegir_proveedor(cuit_buscar, nombre_buscar)
     client.completar_cabecera(
         tipo_comprobante=tipo_comprobante,
         fecha_documento=fecha_documento,
@@ -280,12 +284,14 @@ def correr_watcher(
         if modo == "solo-proveedor":
             client.ir_a_compras_crear()
             nombre = nombre_centum(proveedor_test) if proveedor_test else None
-            if not nombre:
+            cuit = cuit_proveedor(proveedor_test) if proveedor_test else None
+            if not nombre or not cuit:
                 raise SystemExit(
-                    f"No hay nombre de búsqueda para '{proveedor_test}' en "
-                    f"campomar_compras/providers/nombres_centum.json, o no pasaste --proveedor-test."
+                    f"Falta nombre y/o CUIT para '{proveedor_test}' en "
+                    f"campomar_compras/providers/nombres_centum.json y cuits.json, "
+                    f"o no pasaste --proveedor-test."
                 )
-            client.elegir_proveedor(nombre)
+            client.elegir_proveedor(cuit, nombre)
             print(f"Elegir proveedor '{nombre}' OK. Dejo el navegador abierto 30s.")
             time.sleep(30)
             return
@@ -293,12 +299,14 @@ def correr_watcher(
         if modo == "solo-remitos":
             client.ir_a_compras_crear()
             nombre = nombre_centum(proveedor_test) if proveedor_test else None
-            if not nombre:
+            cuit = cuit_proveedor(proveedor_test) if proveedor_test else None
+            if not nombre or not cuit:
                 raise SystemExit(
-                    f"No hay nombre de búsqueda para '{proveedor_test}' en "
-                    f"campomar_compras/providers/nombres_centum.json, o no pasaste --proveedor-test."
+                    f"Falta nombre y/o CUIT para '{proveedor_test}' en "
+                    f"campomar_compras/providers/nombres_centum.json y cuits.json, "
+                    f"o no pasaste --proveedor-test."
                 )
-            client.elegir_proveedor(nombre)
+            client.elegir_proveedor(cuit, nombre)
             client.completar_cabecera(
                 tipo_comprobante=tipo_comprobante or "Factura de Compras",
                 fecha_documento=fecha_documento,
@@ -317,12 +325,14 @@ def correr_watcher(
         if modo == "solo-articulos":
             client.ir_a_compras_crear()
             nombre = nombre_centum(proveedor_test) if proveedor_test else None
-            if not nombre:
+            cuit = cuit_proveedor(proveedor_test) if proveedor_test else None
+            if not nombre or not cuit:
                 raise SystemExit(
-                    f"No hay nombre de búsqueda para '{proveedor_test}' en "
-                    f"campomar_compras/providers/nombres_centum.json, o no pasaste --proveedor-test."
+                    f"Falta nombre y/o CUIT para '{proveedor_test}' en "
+                    f"campomar_compras/providers/nombres_centum.json y cuits.json, "
+                    f"o no pasaste --proveedor-test."
                 )
-            client.elegir_proveedor(nombre)
+            client.elegir_proveedor(cuit, nombre)
             client.completar_cabecera(
                 tipo_comprobante=tipo_comprobante or "Factura de Compras",
                 fecha_documento=fecha_documento,
@@ -351,12 +361,14 @@ def correr_watcher(
         if modo == "solo-eliminar":
             client.ir_a_compras_crear()
             nombre = nombre_centum(proveedor_test) if proveedor_test else None
-            if not nombre:
+            cuit = cuit_proveedor(proveedor_test) if proveedor_test else None
+            if not nombre or not cuit:
                 raise SystemExit(
-                    f"No hay nombre de búsqueda para '{proveedor_test}' en "
-                    f"campomar_compras/providers/nombres_centum.json, o no pasaste --proveedor-test."
+                    f"Falta nombre y/o CUIT para '{proveedor_test}' en "
+                    f"campomar_compras/providers/nombres_centum.json y cuits.json, "
+                    f"o no pasaste --proveedor-test."
                 )
-            client.elegir_proveedor(nombre)
+            client.elegir_proveedor(cuit, nombre)
             client.completar_cabecera(
                 tipo_comprobante=tipo_comprobante or "Factura de Compras",
                 fecha_documento=fecha_documento,
