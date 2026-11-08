@@ -36,6 +36,22 @@ def _formato_decimal_ar(valor: float) -> str:
     return f"{valor:.2f}".replace(".", ",")
 
 
+_MESES_ES = [
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+]
+
+
+def _epoch_ms_utc(anio: int, mes: int, dia: int) -> int:
+    """El datepicker de Fecha Documento (bootstrap-datepicker) marca cada
+    celda de día con data-date=<epoch en milisegundos, medianoche UTC>
+    -- confirmado inspeccionando el HTML real, ej. 5/11/2026 ->
+    data-date="1793836800000". Se usa para ubicar la celda exacta a
+    clickear."""
+    dt = datetime.datetime(anio, mes, dia, tzinfo=datetime.timezone.utc)
+    return int(dt.timestamp() * 1000)
+
+
 @dataclass
 class CentumCredenciales:
     url_login: str
@@ -261,62 +277,62 @@ class CentumBrowserClient:
         self._paso("completar_cabecera", accion)
 
     def fijar_fecha_documento(self, fecha_documento: str) -> None:
-        """Vuelve a escribir Fecha Documento. El usuario notó que cuando
-        una persona edita este campo a mano, Centum sincroniza sola
-        "Fecha Imputación" con el mismo valor -- pero esa sincronización
-        no se dispara con el fill() del script, así que Fecha Documento
-        puede quedar pisada con la fecha de hoy por algún paso posterior
-        (remitos, conceptos, regímenes).
+        """Vuelve a fijar Fecha Documento al final de todo el proceso,
+        porque algún paso posterior (remitos, conceptos, regímenes) la
+        pisa con la fecha de hoy.
 
-        Confirmado con un caso real (DOLZ): un solo fill() al final no
-        alcanza -- el campo sigue volviendo a la fecha de hoy incluso
-        escribiéndolo como último paso antes de terminar, probablemente
-        porque el postback de Centum al confirmar Regímenes Especiales
-        se sigue "asentando" en el servidor unos instantes después de que
-        Playwright considera la red en reposo, y ese asentamiento tardío
-        vuelve a pisar el campo. Por eso reintenta varias veces con una
-        pausa entre cada una, para corregirlo después de que eso ya haya
-        pasado. Si después de los reintentos sigue sin quedar bien, avisa
-        por consola en vez de fallar en silencio -- en ese caso hay que
-        corregirlo a mano en Centum antes de guardar."""
+        Confirmado con tres intentos fallidos sobre un caso real (DOLZ)
+        que escribir el texto con fill() no sirve: es un bootstrap-
+        datepicker (confirmado con DevTools real) que guarda su propia
+        fecha "seleccionada" en un estado interno de JS, separado del
+        texto visible. fill() solo cambia el texto -- el widget nunca se
+        entera, y al cerrarse (con Escape, con Tab, con click afuera, da
+        igual) repone su estado interno, pisando el texto de nuevo con
+        la fecha de hoy.
+
+        La única forma real es clickear el día correcto adentro del
+        propio calendario, como lo haría una persona. Cada celda de día
+        trae data-date=<epoch en milisegundos, medianoche UTC> (ej.
+        5/11/2026 -> data-date="1793836800000"), y el encabezado
+        (".datepicker-switch") muestra el mes/año actual en español con
+        flechas ".prev"/".next" para navegar -- confirmado con DevTools
+        real."""
 
         def accion():
+            dia, mes, anio = (int(x) for x in fecha_documento.split("/"))
+
             campo = self.page.locator("#txtFechaDocumento")
-            for _ in range(4):
-                campo.fill(fecha_documento)
-                self.page.wait_for_timeout(1500)
-                if campo.input_value() == fecha_documento:
-                    # El fill() abre el selector de calendario (datepicker)
-                    # pero no lo cierra -- confirmado con captura real, queda
-                    # tapando el resto del formulario. Ojo: Escape NO sirve
-                    # acá -- confirmado con otra captura real, el widget lo
-                    # toma como "cancelar" y repone su propio valor interno
-                    # (que nunca se enteró de nuestro fill), pisando la
-                    # fecha correcta de nuevo. Tab sí cierra el calendario
-                    # sin esa semántica de cancelar.
-                    campo.press("Tab")
-                    self.page.wait_for_timeout(500)
-                    if campo.input_value() != fecha_documento:
-                        print(
-                            f"[aviso] Fecha Documento volvió a cambiar al cerrar el "
-                            f"calendario (quedó en '{campo.input_value()}') -- revisala "
-                            "y corregila a mano en Centum antes de guardar."
-                        )
-                    # El Tab mueve el foco y el valor queda bien, pero el
-                    # calendario desplegable sigue mostrándose igual --
-                    # confirmado con captura real. Este widget se cierra con
-                    # un click afuera, no perdiendo el foco. Se clickea un
-                    # texto neutro de la pantalla (no interactivo) para
-                    # simular eso.
-                    try:
-                        self.page.get_by_text("Datos Comprobante", exact=True).click()
-                    except Exception:
-                        pass
-                    return
-            print(
-                f"[aviso] Fecha Documento no quedó en {fecha_documento} después de "
-                "varios intentos -- revisala y corregila a mano en Centum antes de guardar."
-            )
+            campo.click()
+            self.page.wait_for_timeout(300)
+
+            switch = self.page.locator(".datepicker-switch").first
+            for _ in range(36):
+                texto = switch.inner_text().strip().lower()
+                partes = texto.split()
+                if len(partes) != 2 or not partes[1].isdigit():
+                    break
+                nombre_mes, anio_mostrado = partes[0], int(partes[1])
+                if nombre_mes not in _MESES_ES:
+                    break
+                mes_mostrado = _MESES_ES.index(nombre_mes) + 1
+                delta = (anio - anio_mostrado) * 12 + (mes - mes_mostrado)
+                if delta == 0:
+                    break
+                boton = self.page.locator(".next" if delta > 0 else ".prev").first
+                boton.click()
+                self.page.wait_for_timeout(200)
+
+            data_date = _epoch_ms_utc(anio, mes, dia)
+            self.page.locator(f"td.day[data-date='{data_date}']").first.click()
+            self.page.wait_for_timeout(500)
+
+            valor_final = campo.input_value()
+            if valor_final != fecha_documento:
+                print(
+                    f"[aviso] Fecha Documento no quedó en {fecha_documento} "
+                    f"(quedó en '{valor_final}') -- revisala y corregila a mano "
+                    "en Centum antes de guardar."
+                )
 
         self._paso("fijar_fecha_documento", accion)
 
