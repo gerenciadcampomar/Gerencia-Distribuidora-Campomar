@@ -286,6 +286,11 @@ class CentumBrowserClient:
                 campo.fill(fecha_documento)
                 self.page.wait_for_timeout(1500)
                 if campo.input_value() == fecha_documento:
+                    # El fill() abre el selector de calendario (datepicker)
+                    # pero no lo cierra -- confirmado con captura real, queda
+                    # tapando el resto del formulario e impide guardar hasta
+                    # que alguien lo cierre a mano. Escape lo cierra.
+                    campo.press("Escape")
                     return
             print(
                 f"[aviso] Fecha Documento no quedó en {fecha_documento} después de "
