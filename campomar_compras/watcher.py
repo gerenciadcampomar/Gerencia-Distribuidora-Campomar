@@ -35,6 +35,7 @@ from campomar_compras.provider_identificacion import (
     cuit_proveedor,
     extraer_fecha_factura,
     identificar_proveedor,
+    jurisdiccion_centum,
     nombre_centum,
 )
 from campomar_compras.provider_parsers import PROVIDER_PARSERS, PROVIDER_REGIMENES_PARSERS, regla_codigo_ralux
@@ -200,8 +201,17 @@ def procesar_factura(
 
     regimenes_parser = PROVIDER_REGIMENES_PARSERS.get(slug)
     regimenes = regimenes_parser(pdf_path) if regimenes_parser else []
+    regimenes_sin_traducir = []
     for regimen in regimenes:
-        client.agregar_regimen_especial(regimen)
+        etiqueta = jurisdiccion_centum(regimen.jurisdiccion)
+        if etiqueta is None:
+            # No adivinamos la fila de Centum -- cada proveedor llama a la
+            # jurisdicción distinto, hay que confirmar el texto exacto a
+            # mano la primera vez (ver jurisdicciones_centum.json) antes
+            # de cargarla sola.
+            regimenes_sin_traducir.append(regimen)
+            continue
+        client.agregar_regimen_especial(etiqueta, regimen.importe)
 
     validacion = validar_subtotal(resultados, totales_factura)
 
@@ -228,9 +238,19 @@ def procesar_factura(
         codigo = r.remito_line.codigo_articulo if r.remito_line else r.invoice_line.codigo_proveedor
         lineas_reporte.append(f"  [{r.status.value}] {codigo}  {r.notes}")
     if regimenes:
+        cargados = [r for r in regimenes if r not in regimenes_sin_traducir]
+        if cargados:
+            lineas_reporte.append("")
+            lineas_reporte.append("Regímenes Especiales cargados:")
+            for regimen in cargados:
+                lineas_reporte.append(f"  {regimen.jurisdiccion}: ${regimen.importe:,.2f}")
+    if regimenes_sin_traducir:
         lineas_reporte.append("")
-        lineas_reporte.append("Regímenes Especiales cargados:")
-        for regimen in regimenes:
+        lineas_reporte.append(
+            ">>> ATENCIÓN: hay Regímenes Especiales en la factura que el agente NO "
+            "sabe a qué fila de Centum corresponden -- cargalos a mano: <<<"
+        )
+        for regimen in regimenes_sin_traducir:
             lineas_reporte.append(f"  {regimen.jurisdiccion}: ${regimen.importe:,.2f}")
     lineas_reporte += [
         "",

@@ -14,6 +14,7 @@ from campomar_compras.pdf_extractor import extraer_texto
 
 CUITS_PATH = Path(__file__).parent / "providers" / "cuits.json"
 NOMBRES_CENTUM_PATH = Path(__file__).parent / "providers" / "nombres_centum.json"
+JURISDICCIONES_CENTUM_PATH = Path(__file__).parent / "providers" / "jurisdicciones_centum.json"
 
 CUIT_RE = re.compile(
     r"C\.?U\.?I\.?T\.?\s*(?:Nro\.?|N[°º]?)?\s*[:\.]?\s*([\d][\d\-]{9,12}\d)",
@@ -97,6 +98,28 @@ def cuit_proveedor(slug_proveedor: str) -> str | None:
         if slug == slug_proveedor:
             return cuit
     return None
+
+
+def _normalizar_jurisdiccion(texto: str) -> str:
+    sin_puntos = texto.replace(".", "")
+    return re.sub(r"\s+", " ", sin_puntos).strip().lower()
+
+
+def jurisdiccion_centum(jurisdiccion_pdf: str) -> str | None:
+    """Traduce la jurisdicción tal como la escribe un proveedor (ej. "Bs.
+    As.", "C.A.B.A.", "CABA", "Buenos Aires" -- cada uno la llama
+    distinto, nunca coincide literal con Centum) al texto exacto de la
+    fila correspondiente en la sección Regímenes Especiales de Centum
+    (ej. "Percepcion IIBB BsAs (C)"). Devuelve None si esa jurisdicción
+    todavía no está en la tabla -- hay que agregarla a mano la primera
+    vez que aparece (ver campomar_compras/providers/jurisdicciones_centum.json),
+    confirmando el texto exacto de la fila en Centum. Siempre hay que
+    usar la fila que termina en "(C)" (de Compra), nunca la de "(V)"
+    (Venta)."""
+    if not JURISDICCIONES_CENTUM_PATH.exists():
+        return None
+    tabla = json.loads(JURISDICCIONES_CENTUM_PATH.read_text(encoding="utf-8"))
+    return tabla.get(_normalizar_jurisdiccion(jurisdiccion_pdf))
 
 
 def nombre_centum(slug_proveedor: str) -> str | None:

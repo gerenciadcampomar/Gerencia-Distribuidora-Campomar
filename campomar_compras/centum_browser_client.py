@@ -20,7 +20,7 @@ import datetime
 from dataclasses import dataclass
 from pathlib import Path
 
-from campomar_compras.models import ConceptoFaltante, RegimenEspecial, RemitoArticleLine
+from campomar_compras.models import ConceptoFaltante, RemitoArticleLine
 from campomar_compras.provider_parsers import _num_eu
 
 
@@ -461,15 +461,30 @@ class CentumBrowserClient:
 
         self._paso("agregar_concepto", accion)
 
-    def agregar_regimen_especial(self, regimen: RegimenEspecial) -> None:
+    def agregar_regimen_especial(self, etiqueta_centum: str, importe: float) -> None:
+        """etiqueta_centum: el texto EXACTO de la fila en Centum (ej.
+        "Percepcion IIBB BsAs (C)"), ya traducido desde la jurisdicción
+        que trae el PDF -- cada proveedor la llama distinto, nunca
+        coincide literal con Centum (ver jurisdiccion_centum() en
+        provider_identificacion.py). Confirmado con el usuario: Centum
+        tiene una lista fija de regímenes predefinidos (901, 902, ...),
+        no un campo de texto libre; siempre hay que usar la fila que
+        termina en "(C)" de Compra, nunca "(V)" de Venta. Confirmado con
+        DevTools: el campo de importe de cada fila tiene id
+        "txtRegimenEspecialPrecio_<N>" (N es un índice interno, no el
+        número de régimen que se ve en pantalla) -- se ubica por la fila
+        que contiene el texto de la etiqueta, no por ese id directo. El
+        campo de Observaciones de cada fila NO se completa (salvo casos
+        puntuales todavía no definidos)."""
+
         def accion():
             # Confirmado con error real (mismo listado de 7 botones
             # "Agregar"): el de esta sección es #btnAgregarRegimenesEspeciales.
             self.page.locator("#btnAgregarRegimenesEspeciales").click()
-            self.page.get_by_label("Jurisdicción").fill(regimen.jurisdiccion)
-            self.page.get_by_label("Importe").fill(str(regimen.importe))
+            fila = self.page.locator("tr", has_text=etiqueta_centum)
+            fila.locator("input[id^='txtRegimenEspecialPrecio_']").fill(str(importe))
 
-        self._paso("agregar_regimen_especial", accion)
+        self._paso(f"agregar_regimen_especial_{etiqueta_centum}", accion)
 
     # --- Lectura final ---------------------------------------------------
 
