@@ -28,6 +28,14 @@ class PasoCentumError(RuntimeError):
     """Un paso de la automatización no encontró lo que esperaba en pantalla."""
 
 
+def _formato_decimal_ar(valor: float) -> str:
+    """Centum espera coma decimal, no punto -- confirmado con error real:
+    "43434.0" quedaba marcado como inválido (en rosa) en el campo de
+    Regímenes Especiales, porque en Argentina el separador decimal es la
+    coma, no el punto. Ej.: 43434.0 -> "43434.00" -> "43434,00"."""
+    return f"{valor:.2f}".replace(".", ",")
+
+
 @dataclass
 class CentumCredenciales:
     url_login: str
@@ -499,7 +507,7 @@ class CentumBrowserClient:
 
         def accion():
             fila = self.page.locator("tr", has_text=etiqueta_centum)
-            fila.locator("input[id^='txtRegimenEspecialPrecio_']").fill(str(importe))
+            fila.locator("input[id^='txtRegimenEspecialPrecio_']").fill(_formato_decimal_ar(importe))
 
         self._paso(f"marcar_regimen_especial_{etiqueta_centum}", accion)
 
