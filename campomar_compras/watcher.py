@@ -202,6 +202,7 @@ def procesar_factura(
     regimenes_parser = PROVIDER_REGIMENES_PARSERS.get(slug)
     regimenes = regimenes_parser(pdf_path) if regimenes_parser else []
     regimenes_sin_traducir = []
+    regimenes_a_cargar = []
     for regimen in regimenes:
         etiqueta = jurisdiccion_centum(regimen.jurisdiccion)
         if etiqueta is None:
@@ -211,7 +212,16 @@ def procesar_factura(
             # de cargarla sola.
             regimenes_sin_traducir.append(regimen)
             continue
-        client.agregar_regimen_especial(etiqueta, regimen.importe)
+        regimenes_a_cargar.append((etiqueta, regimen))
+
+    if regimenes_a_cargar:
+        # Se abre la lista UNA sola vez, se escriben todos los importes,
+        # y recién al final se confirma -- igual que con los excedentes
+        # (tildar todos, eliminar en un solo paso).
+        client.abrir_regimenes_no_asignados()
+        for etiqueta, regimen in regimenes_a_cargar:
+            client.marcar_regimen_especial(etiqueta, regimen.importe)
+        client.confirmar_regimenes_especiales()
 
     validacion = validar_subtotal(resultados, totales_factura)
 

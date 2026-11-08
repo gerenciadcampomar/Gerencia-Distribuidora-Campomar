@@ -461,36 +461,59 @@ class CentumBrowserClient:
 
         self._paso("agregar_concepto", accion)
 
-    def agregar_regimen_especial(self, etiqueta_centum: str, importe: float) -> None:
-        """etiqueta_centum: el texto EXACTO de la fila en Centum (ej.
-        "Percepcion IIBB BsAs (C)"), ya traducido desde la jurisdicción
-        que trae el PDF -- cada proveedor la llama distinto, nunca
-        coincide literal con Centum (ver jurisdiccion_centum() en
-        provider_identificacion.py). Confirmado con el usuario: Centum
-        tiene una lista fija de regímenes predefinidos (901, 902, ...),
-        no un campo de texto libre; siempre hay que usar la fila que
-        termina en "(C)" de Compra, nunca "(V)" de Venta. Confirmado con
-        DevTools: el campo de importe de cada fila tiene id
-        "txtRegimenEspecialPrecio_<N>" (N es un índice interno, no el
-        número de régimen que se ve en pantalla) -- se ubica por la fila
-        que contiene el texto de la etiqueta, no por ese id directo. El
-        campo de Observaciones de cada fila NO se completa (salvo casos
-        puntuales todavía no definidos)."""
+    def abrir_regimenes_no_asignados(self) -> None:
+        """Abre la lista completa de Regímenes Especiales disponibles
+        (901 CABA, 902 BsAs, ... y muchos más, confirmado con captura
+        real). Hay que abrirla UNA sola vez, escribir ahí todos los
+        importes que hagan falta con marcar_regimen_especial(), y recién
+        al final confirmar con confirmar_regimenes_especiales() -- igual
+        que con los excedentes (tildar todos, eliminar en un solo paso)."""
 
         def accion():
             # Confirmado con error real (mismo listado de 7 botones
             # "Agregar"): el de esta sección es #btnAgregarRegimenesEspeciales.
             # Confirmado con error real: el botón existe en el DOM pero no
             # es visible sin hacer scroll primero (la sección queda más
-            # abajo en la pantalla) -- mismo tipo de problema que tuvimos
-            # con otras secciones.
+            # abajo en la pantalla).
             boton = self.page.locator("#btnAgregarRegimenesEspeciales")
             boton.scroll_into_view_if_needed()
             boton.click()
+            self.page.wait_for_load_state("networkidle")
+
+        self._paso("abrir_regimenes_no_asignados", accion)
+
+    def marcar_regimen_especial(self, etiqueta_centum: str, importe: float) -> None:
+        """etiqueta_centum: el texto EXACTO de la fila en Centum (ej.
+        "Percepcion IIBB BsAs (C)"), ya traducido desde la jurisdicción
+        que trae el PDF -- cada proveedor la llama distinto, nunca
+        coincide literal con Centum (ver jurisdiccion_centum() en
+        provider_identificacion.py). Siempre hay que usar la fila que
+        termina en "(C)" de Compra, nunca "(V)" de Venta. Confirmado con
+        DevTools: el campo de importe de cada fila tiene id
+        "txtRegimenEspecialPrecio_<N>" (N es un índice interno, no el
+        número de régimen que se ve en pantalla) -- se ubica por la fila
+        que contiene el texto de la etiqueta, no por ese id directo. El
+        campo de Observaciones de cada fila NO se completa (salvo casos
+        puntuales todavía no definidos). Requiere haber llamado antes a
+        abrir_regimenes_no_asignados()."""
+
+        def accion():
             fila = self.page.locator("tr", has_text=etiqueta_centum)
             fila.locator("input[id^='txtRegimenEspecialPrecio_']").fill(str(importe))
 
-        self._paso(f"agregar_regimen_especial_{etiqueta_centum}", accion)
+        self._paso(f"marcar_regimen_especial_{etiqueta_centum}", accion)
+
+    def confirmar_regimenes_especiales(self) -> None:
+        """Confirma todos los importes escritos con marcar_regimen_especial()
+        y vuelve a la pantalla del comprobante. Confirmado con DevTools:
+        botón sin texto único en pantalla (hay "Agregar" y "Agregar y
+        Volver") -- se usa el id real, btnAgregarRegimenesEspecialesOKYVolver."""
+
+        def accion():
+            self.page.locator("#btnAgregarRegimenesEspecialesOKYVolver").click()
+            self.page.wait_for_load_state("networkidle")
+
+        self._paso("confirmar_regimenes_especiales", accion)
 
     # --- Lectura final ---------------------------------------------------
 
