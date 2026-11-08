@@ -266,12 +266,31 @@ class CentumBrowserClient:
         "Fecha Imputación" con el mismo valor -- pero esa sincronización
         no se dispara con el fill() del script, así que Fecha Documento
         puede quedar pisada con la fecha de hoy por algún paso posterior
-        (remitos, conceptos, regímenes). Por eso se vuelve a fijar al
-        final de todo el proceso, en vez de confiar en que quede como se
-        dejó en completar_cabecera()."""
+        (remitos, conceptos, regímenes).
+
+        Confirmado con un caso real (DOLZ): un solo fill() al final no
+        alcanza -- el campo sigue volviendo a la fecha de hoy incluso
+        escribiéndolo como último paso antes de terminar, probablemente
+        porque el postback de Centum al confirmar Regímenes Especiales
+        se sigue "asentando" en el servidor unos instantes después de que
+        Playwright considera la red en reposo, y ese asentamiento tardío
+        vuelve a pisar el campo. Por eso reintenta varias veces con una
+        pausa entre cada una, para corregirlo después de que eso ya haya
+        pasado. Si después de los reintentos sigue sin quedar bien, avisa
+        por consola en vez de fallar en silencio -- en ese caso hay que
+        corregirlo a mano en Centum antes de guardar."""
 
         def accion():
-            self.page.locator("#txtFechaDocumento").fill(fecha_documento)
+            campo = self.page.locator("#txtFechaDocumento")
+            for _ in range(4):
+                campo.fill(fecha_documento)
+                self.page.wait_for_timeout(1500)
+                if campo.input_value() == fecha_documento:
+                    return
+            print(
+                f"[aviso] Fecha Documento no quedó en {fecha_documento} después de "
+                "varios intentos -- revisala y corregila a mano en Centum antes de guardar."
+            )
 
         self._paso("fijar_fecha_documento", accion)
 
