@@ -288,9 +288,20 @@ class CentumBrowserClient:
                 if campo.input_value() == fecha_documento:
                     # El fill() abre el selector de calendario (datepicker)
                     # pero no lo cierra -- confirmado con captura real, queda
-                    # tapando el resto del formulario e impide guardar hasta
-                    # que alguien lo cierre a mano. Escape lo cierra.
-                    campo.press("Escape")
+                    # tapando el resto del formulario. Ojo: Escape NO sirve
+                    # acá -- confirmado con otra captura real, el widget lo
+                    # toma como "cancelar" y repone su propio valor interno
+                    # (que nunca se enteró de nuestro fill), pisando la
+                    # fecha correcta de nuevo. Tab sí cierra el calendario
+                    # sin esa semántica de cancelar.
+                    campo.press("Tab")
+                    self.page.wait_for_timeout(500)
+                    if campo.input_value() != fecha_documento:
+                        print(
+                            f"[aviso] Fecha Documento volvió a cambiar al cerrar el "
+                            f"calendario (quedó en '{campo.input_value()}') -- revisala "
+                            "y corregila a mano en Centum antes de guardar."
+                        )
                     return
             print(
                 f"[aviso] Fecha Documento no quedó en {fecha_documento} después de "
