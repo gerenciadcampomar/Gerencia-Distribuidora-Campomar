@@ -36,7 +36,7 @@ from campomar_compras.provider_identificacion import (
     identificar_proveedor,
     nombre_centum,
 )
-from campomar_compras.provider_parsers import PROVIDER_PARSERS, regla_codigo_ralux
+from campomar_compras.provider_parsers import PROVIDER_PARSERS, PROVIDER_REGIMENES_PARSERS, regla_codigo_ralux
 from campomar_compras.validator import validar_subtotal
 
 REGLAS_CODIGO = {"ralux": regla_codigo_ralux}
@@ -194,6 +194,11 @@ def procesar_factura(
     for concepto in proponer_conceptos_faltantes(resultados):
         client.agregar_concepto(concepto)
 
+    regimenes_parser = PROVIDER_REGIMENES_PARSERS.get(slug)
+    regimenes = regimenes_parser(pdf_path) if regimenes_parser else []
+    for regimen in regimenes:
+        client.agregar_regimen_especial(regimen)
+
     validacion = validar_subtotal(resultados, totales_factura)
 
     numero_comprobante = f"{punto_venta}-{numero}" if punto_venta and numero else pdf_path.name
@@ -218,6 +223,11 @@ def procesar_factura(
     for r in resultados:
         codigo = r.remito_line.codigo_articulo if r.remito_line else r.invoice_line.codigo_proveedor
         lineas_reporte.append(f"  [{r.status.value}] {codigo}  {r.notes}")
+    if regimenes:
+        lineas_reporte.append("")
+        lineas_reporte.append("Regímenes Especiales cargados:")
+        for regimen in regimenes:
+            lineas_reporte.append(f"  {regimen.jurisdiccion}: ${regimen.importe:,.2f}")
     lineas_reporte += [
         "",
         f"Subtotal sistema: ${validacion.subtotal_sistema:,.2f}",

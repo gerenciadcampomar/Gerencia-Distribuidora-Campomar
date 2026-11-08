@@ -1,5 +1,10 @@
 from campomar_compras.code_mapping import CodeMappingStore
 from campomar_compras.provider_parsers import (
+    DOLZ_IVA_RE,
+    DOLZ_LINE_RE,
+    DOLZ_PERCEPCION_RE,
+    DOLZ_SUBTOTAL_RE,
+    DOLZ_TOTAL_RE,
     NOSSO_ALICUOTA_RE,
     NOSSO_LINE_RE,
     RALUX_LINE_RE,
@@ -81,6 +86,42 @@ def test_ralux_totales():
 def test_ralux_regla_codigo():
     assert regla_codigo_ralux("TEM043-T-9082") == "RAL9082"
     assert regla_codigo_ralux("REL247-129") == "RAL129"
+
+
+def test_dolz_linea():
+    # Texto real extraído con pdfplumber de una factura DOLZ (comprobante
+    # 0006-00022920).
+    m = DOLZ_LINE_RE.match("KD230 FULLKIT A179 VW 1.6 N POLO-GOLF 15,00 D UN 48.260,00 2 723.900,00")
+    assert m
+    assert m.group("codigo") == "KD230"
+    assert m.group("descripcion") == "FULLKIT A179 VW 1.6 N POLO-GOLF"
+    assert _num_eu(m.group("cantidad")) == 15.0
+    assert _num_eu(m.group("precio")) == 48260.0
+    assert _num_eu(m.group("total")) == 723900.0
+
+
+def test_dolz_totales():
+    texto = (
+        "Subtotal 723.900,00\n"
+        "I.V.A. 21,00 % 152.019,00\n"
+        "Percep. II.BB. Bs. As. 1,75 % 12.668,25\n"
+        "Percep. II.BB. C.A.B.A. 6,00 % 43.434,00\n"
+        "TOTAL 932.021,25\n"
+    )
+    subtotal = next(m for m in texto.splitlines() if DOLZ_SUBTOTAL_RE.match(m))
+    assert _num_eu(DOLZ_SUBTOTAL_RE.match(subtotal).group(1)) == 723900.0
+    total = next(m for m in texto.splitlines() if DOLZ_TOTAL_RE.match(m))
+    assert _num_eu(DOLZ_TOTAL_RE.match(total).group(1)) == 932021.25
+    iva = next(m for m in texto.splitlines() if DOLZ_IVA_RE.match(m))
+    assert _num_eu(DOLZ_IVA_RE.match(iva).group(1)) == 152019.0
+
+    percepciones = [DOLZ_PERCEPCION_RE.match(linea) for linea in texto.splitlines()]
+    percepciones = [m for m in percepciones if m]
+    assert len(percepciones) == 2
+    assert percepciones[0].group("jurisdiccion") == "Bs. As."
+    assert _num_eu(percepciones[0].group("importe")) == 12668.25
+    assert percepciones[1].group("jurisdiccion") == "C.A.B.A."
+    assert _num_eu(percepciones[1].group("importe")) == 43434.0
     assert regla_codigo_ralux("MOD027-M-8921") == "RAL8921"
 
 

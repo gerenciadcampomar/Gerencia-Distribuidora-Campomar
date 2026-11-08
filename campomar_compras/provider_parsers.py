@@ -218,7 +218,91 @@ def parse_lineas_byc(pdf_path: Path) -> list[PedidoProveedorLine]:
     return lineas
 
 
+# --- DOLZ -----------------------------------------------------------
+
+DOLZ_LINE_RE = re.compile(
+    r"^(?P<codigo>\S+)\s+(?P<descripcion>.+?)\s+"
+    r"(?P<cantidad>\d+,\d{2})\s+(?P<signo>[A-Z])\s+(?P<um>[A-Z]+)\s+"
+    r"(?P<precio>[\d.]+,\d{2})\s+(?P<lista>\d+)\s+(?P<total>[\d.]+,\d{2})\s*$"
+)
+DOLZ_SUBTOTAL_RE = re.compile(r"^Subtotal\s+([\d.]+,\d{2})\s*$")
+DOLZ_IVA_RE = re.compile(r"^I\.V\.A\.\s+[\d,]+\s*%\s+([\d.]+,\d{2})\s*$")
+DOLZ_TOTAL_RE = re.compile(r"^TOTAL\s+([\d.]+,\d{2})\s*$")
+DOLZ_PERCEPCION_RE = re.compile(
+    r"^Percep\.\s*I{1,2}\.BB\.\s+(?P<jurisdiccion>.+?)\s+[\d,]+\s*%\s+(?P<importe>[\d.]+,\d{2})\s*$"
+)
+
+
+def parse_lineas_dolz(pdf_path: Path) -> list[InvoiceLine]:
+    texto = extraer_texto(pdf_path)
+    lineas = []
+    for raw_line in texto.splitlines():
+        m = DOLZ_LINE_RE.match(raw_line.strip())
+        if not m:
+            continue
+        lineas.append(
+            InvoiceLine(
+                codigo_proveedor=m.group("codigo").strip(),
+                descripcion=m.group("descripcion").strip(),
+                cantidad=_num_eu(m.group("cantidad")),
+                precio_unitario=_num_eu(m.group("precio")),
+                subtotal=_num_eu(m.group("total")),
+            )
+        )
+    return lineas
+
+
+def parse_totales_dolz(pdf_path: Path) -> InvoiceTotals:
+    texto = extraer_texto(pdf_path)
+    m_subtotal = None
+    m_total = None
+    iva_total = 0.0
+    for raw_line in texto.splitlines():
+        linea = raw_line.strip()
+        if m_subtotal is None:
+            m_subtotal = DOLZ_SUBTOTAL_RE.match(linea)
+        if m_total is None:
+            m_total = DOLZ_TOTAL_RE.match(linea)
+        m_iva = DOLZ_IVA_RE.match(linea)
+        if m_iva:
+            iva_total += _num_eu(m_iva.group(1))
+    if not m_subtotal or not m_total:
+        raise ValueError("No se pudo extraer Subtotal/TOTAL del PDF de DOLZ.")
+    return InvoiceTotals(
+        subtotal_neto=_num_eu(m_subtotal.group(1)),
+        iva=round(iva_total, 2),
+        total=_num_eu(m_total.group(1)),
+    )
+
+
+def parse_percepciones_dolz(pdf_path: Path) -> list[RegimenEspecial]:
+    """Percepciones de Ingresos Brutos por jurisdicción (ej. "Bs. As.",
+    "C.A.B.A.") -> Regímenes Especiales."""
+    texto = extraer_texto(pdf_path)
+    percepciones = []
+    for raw_line in texto.splitlines():
+        m = DOLZ_PERCEPCION_RE.match(raw_line.strip())
+        if not m:
+            continue
+        percepciones.append(
+            RegimenEspecial(
+                jurisdiccion=m.group("jurisdiccion").strip(),
+                importe=_num_eu(m.group("importe")),
+            )
+        )
+    return percepciones
+
+
 PROVIDER_PARSERS = {
     "nosso": (parse_lineas_nosso, parse_totales_nosso),
     "ralux": (parse_lineas_ralux, parse_totales_ralux),
+    "dolz": (parse_lineas_dolz, parse_totales_dolz),
+}
+
+# No todos los proveedores tienen percepciones/regímenes especiales en su
+# factura (Nosso y Ralux no, hasta ahora) -- sólo se registran acá los que
+# sí, para que watcher.py sepa cuándo buscarlos y cargarlos.
+PROVIDER_REGIMENES_PARSERS = {
+    "ralux": parse_percepciones_ralux,
+    "dolz": parse_percepciones_dolz,
 }
