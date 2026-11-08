@@ -480,7 +480,13 @@ class CentumBrowserClient:
         def accion():
             # Confirmado con error real (mismo listado de 7 botones
             # "Agregar"): el de esta sección es #btnAgregarRegimenesEspeciales.
-            self.page.locator("#btnAgregarRegimenesEspeciales").click()
+            # Confirmado con error real: el botón existe en el DOM pero no
+            # es visible sin hacer scroll primero (la sección queda más
+            # abajo en la pantalla) -- mismo tipo de problema que tuvimos
+            # con otras secciones.
+            boton = self.page.locator("#btnAgregarRegimenesEspeciales")
+            boton.scroll_into_view_if_needed()
+            boton.click()
             fila = self.page.locator("tr", has_text=etiqueta_centum)
             fila.locator("input[id^='txtRegimenEspecialPrecio_']").fill(str(importe))
 
