@@ -81,7 +81,7 @@ class ConceptoFaltante:
     """Línea a cargar manualmente en 'Conceptos' -> '02 - Mercaderías varias'."""
 
     codigo_concepto: str = "02"
-    observaciones: str = ""  # código del artículo faltante, texto libre
+    observaciones: str = ""  # "<código del artículo> FALTANTE" -- formato confirmado por el usuario
     cantidad: float = 0.0
     precio: float = 0.0
 
@@ -91,7 +91,7 @@ class ConceptoFaltante:
         completo); se puede pasar explícita para un faltante parcial
         (cuando el remito trajo parte de la cantidad facturada)."""
         return cls(
-            observaciones=f"{line.codigo_proveedor} - {line.descripcion}".strip(" -"),
+            observaciones=f"{line.codigo_proveedor} FALTANTE",
             cantidad=cantidad if cantidad is not None else line.cantidad,
             precio=line.precio_unitario,
         )
