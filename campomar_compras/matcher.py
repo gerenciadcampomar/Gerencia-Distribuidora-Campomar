@@ -139,15 +139,25 @@ def match_remitos_contra_factura(
             continue
 
         precio_neto_remito = subtotal_remito / cantidad_remito
-        if not _precio_coincide(precio_neto_remito, match_encontrado.precio_unitario):
+        # Precio NETO de la factura (subtotal facturado / cantidad), no el
+        # precio unitario bruto -- confirmado con error real: cuando hay
+        # descuento comercial, el remito ya viene con el descuento
+        # aplicado ("neto c/dto"), pero se estaba comparando contra el
+        # precio unitario bruto de la factura (sin descontar), dando
+        # precio_difiere en casi todas las líneas aunque en realidad
+        # coincidían perfecto (ej. 968,49 vs 1.210,61 = exactamente 20%
+        # de diferencia en decenas de líneas, sistemático). Mismo criterio
+        # que ya usa ConceptoFaltante para los faltantes.
+        precio_neto_factura = match_encontrado.subtotal / match_encontrado.cantidad
+        if not _precio_coincide(precio_neto_remito, precio_neto_factura):
             resultados.append(
                 MatchResult(
                     status=MatchStatus.PRECIO_DIFIERE,
                     remito_lines=grupo,
                     invoice_line=match_encontrado,
                     notes=(
-                        f"Remito (neto c/dto): {precio_neto_remito:.2f} vs Factura: "
-                        f"{match_encontrado.precio_unitario}"
+                        f"Remito (neto c/dto): {precio_neto_remito:.2f} vs Factura (neto): "
+                        f"{precio_neto_factura:.2f}"
                     ),
                 )
             )

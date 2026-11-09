@@ -126,6 +126,20 @@ def test_faltante_con_descuento_comercial_usa_precio_neto(tmp_path):
     assert round(conceptos[0].cantidad * conceptos[0].precio, 2) == 29410.79
 
 
+def test_precio_coincide_cuando_ambos_lados_tienen_el_mismo_descuento(tmp_path):
+    # Bug real reportado: el remito ya trae el descuento comercial
+    # aplicado ("neto c/dto"), pero se comparaba contra el precio unitario
+    # BRUTO de la factura (sin descontar) -- daba precio_difiere en casi
+    # todas las líneas de una factura con 20% de descuento, aunque en
+    # realidad coincidían perfecto. Caso real (YNT718): remito neto
+    # 968.49 vs factura bruta 1210.61 (exactamente 20% de diferencia).
+    remitos = [RemitoArticleLine("Z837", "Interruptor", "r1", 5, 968.49)]  # ya neto, sin dto en el remito
+    facturas = [InvoiceLine("837", "Interruptor", 5, 1210.61, subtotal=round(968.49 * 5, 2))]
+
+    resultados = match_remitos_contra_factura(remitos, facturas, _mapping(tmp_path))
+    assert resultados[0].status == MatchStatus.OK
+
+
 def test_mismo_codigo_en_dos_renglones_del_remito_se_suma(tmp_path):
     # Bug real encontrado con un comprobante de prueba (código YNT722): el
     # proveedor entrega el mismo artículo en dos renglones separados del
