@@ -293,10 +293,54 @@ def parse_percepciones_dolz(pdf_path: Path) -> list[RegimenEspecial]:
     return percepciones
 
 
+BRONCO_LINEA_RE = re.compile(
+    r"(?P<codigo>[A-Z]{2,8}\d{2,6})\s*(?P<resto>.*?)\s+(?P<cantidad>\d+)\s+"
+    r"\$\s*(?P<precio>[\d.]+,\d{2})\s+\$\s*(?P<total>[\d.]+,\d{2})",
+    re.DOTALL,
+)
+
+
+def parse_lineas_bronco(pdf_path: Path) -> list[InvoiceLine]:
+    """Autopartes Bronco manda un comprobante "así nomás" (sin CUIT, sin
+    Subtotal/IVA/Total) con una tabla simple Artículo/Descripción/
+    Cantidad/Precio unitario/Precio total. Cuando la descripción es larga,
+    el PDF la corta en dos líneas (el código queda solo en su renglón) --
+    por eso el regex usa DOTALL y busca desde cada código hasta el primer
+    "cantidad $ precio $ total" que aparece después, sin importar los
+    saltos de línea en el medio. Confirmado contra el texto real del PDF
+    de prueba, incluida una línea (RET408) con un número suelto pegado al
+    final de la descripción que no es la cantidad."""
+    texto = extraer_texto(pdf_path)
+    lineas = []
+    for m in BRONCO_LINEA_RE.finditer(texto):
+        descripcion = re.sub(r"\s+", " ", m.group("resto")).strip()
+        lineas.append(
+            InvoiceLine(
+                codigo_proveedor=m.group("codigo").strip(),
+                descripcion=descripcion,
+                cantidad=_num_eu(m.group("cantidad")),
+                precio_unitario=_num_eu(m.group("precio")),
+                subtotal=_num_eu(m.group("total")),
+            )
+        )
+    return lineas
+
+
+def parse_totales_bronco(pdf_path: Path) -> InvoiceTotals:
+    """Este comprobante no trae renglones de Subtotal/IVA/Total -- se
+    calcula el subtotal sumando el "Precio total" de cada línea. No hay
+    forma de saber el IVA desde este papel, así que queda en 0 (si
+    corresponde, hay que ajustarlo a mano después de ver un caso real)."""
+    lineas = parse_lineas_bronco(pdf_path)
+    subtotal = round(sum(linea.subtotal for linea in lineas), 2)
+    return InvoiceTotals(subtotal_neto=subtotal, iva=0.0, total=subtotal)
+
+
 PROVIDER_PARSERS = {
     "nosso": (parse_lineas_nosso, parse_totales_nosso),
     "ralux": (parse_lineas_ralux, parse_totales_ralux),
     "dolz": (parse_lineas_dolz, parse_totales_dolz),
+    "bronco": (parse_lineas_bronco, parse_totales_bronco),
 }
 
 # No todos los proveedores tienen percepciones/regímenes especiales en su
