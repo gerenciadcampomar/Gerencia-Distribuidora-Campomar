@@ -89,11 +89,21 @@ class ConceptoFaltante:
     def desde_invoice_line(cls, line: InvoiceLine, cantidad: float | None = None) -> "ConceptoFaltante":
         """`cantidad` por defecto es la de la línea entera (faltante
         completo); se puede pasar explícita para un faltante parcial
-        (cuando el remito trajo parte de la cantidad facturada)."""
+        (cuando el remito trajo parte de la cantidad facturada).
+
+        `precio` usa el precio NETO (subtotal facturado / cantidad), no
+        el precio unitario bruto -- confirmado por el usuario: cuando hay
+        descuento comercial, el precio unitario impreso no es el que hay
+        que cargar, porque la grilla de Conceptos no tiene una columna de
+        descuento aparte (a diferencia del remito, que sí la tiene).
+        Centum calcula el subtotal como cantidad × precio ahí mismo, así
+        que hay que pasarle directamente el precio ya neto para que el
+        total coincida con lo facturado."""
+        precio_neto = line.subtotal / line.cantidad if line.cantidad else line.precio_unitario
         return cls(
             observaciones=f"{line.codigo_proveedor} FALTANTE",
             cantidad=cantidad if cantidad is not None else line.cantidad,
-            precio=line.precio_unitario,
+            precio=precio_neto,
         )
 
 

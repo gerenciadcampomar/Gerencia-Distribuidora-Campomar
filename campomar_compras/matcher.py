@@ -193,7 +193,12 @@ def subtotal_propuesto(resultados: list[MatchResult]) -> float:
             total += r.invoice_line.subtotal
         elif r.status == MatchStatus.FALTANTE_PARCIAL:
             total += sum(linea.subtotal for linea in r.remito_lines)
-            total += round(r.cantidad_diferencia * r.invoice_line.precio_unitario, 2)
+            # Precio neto (subtotal facturado / cantidad), no el precio
+            # unitario bruto -- mismo motivo que en ConceptoFaltante: si
+            # hay descuento comercial, es el precio unitario el que no
+            # refleja lo realmente facturado por unidad.
+            precio_neto_factura = r.invoice_line.subtotal / r.invoice_line.cantidad
+            total += round(r.cantidad_diferencia * precio_neto_factura, 2)
         elif r.status == MatchStatus.EXCEDENTE_PARCIAL:
             # Al ajustar la cantidad a la facturada, Centum recalcula el
             # subtotal con SU propio precio unitario (el del remito), no

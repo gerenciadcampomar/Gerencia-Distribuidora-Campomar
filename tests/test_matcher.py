@@ -105,6 +105,27 @@ def test_faltante_parcial_remito_trae_menos_que_la_factura(tmp_path):
     assert conceptos[0].precio == 100.0
 
 
+def test_faltante_con_descuento_comercial_usa_precio_neto(tmp_path):
+    # Caso real reportado: factura de prueba con descuento comercial del
+    # 20% entre precio unitario y precio total (STOP935: precio unitario
+    # 3063.62, cantidad 12, total facturado 29410.79 -- NO 36763.44 que
+    # daría cantidad*precio_unitario sin descontar). Conceptos no tiene
+    # columna de descuento aparte como el remito, así que el precio que
+    # se carga ahí tiene que ser el neto (subtotal/cantidad), si no
+    # Centum calcula un subtotal inflado.
+    facturas = [InvoiceLine("STOP935", "Interruptor", 12, 3063.62, subtotal=29410.79)]
+    resultados = match_remitos_contra_factura([], facturas, _mapping(tmp_path))
+    assert resultados[0].status == MatchStatus.FALTANTE
+
+    conceptos = proponer_conceptos_faltantes(resultados)
+    assert len(conceptos) == 1
+    assert conceptos[0].cantidad == 12
+    assert round(conceptos[0].precio, 2) == round(29410.79 / 12, 2)
+    # Verifica que cantidad * precio reconstruye el total facturado, no
+    # el inflado sin descuento.
+    assert round(conceptos[0].cantidad * conceptos[0].precio, 2) == 29410.79
+
+
 def test_mismo_codigo_en_dos_renglones_del_remito_se_suma(tmp_path):
     # Bug real encontrado con un comprobante de prueba (código YNT722): el
     # proveedor entrega el mismo artículo en dos renglones separados del
