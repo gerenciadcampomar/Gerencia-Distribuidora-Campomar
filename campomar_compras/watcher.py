@@ -204,17 +204,11 @@ def procesar_factura(
     # pendiente de suscribir para otra factura del proveedor. Si el
     # código vino repetido en más de un renglón del remito, no hay forma
     # de decidir sola en cuál de los varios aplicar el ajuste -- ahí
-    # queda para revisión manual (ver reporte).
+    # queda para revisión manual (ver reporte). El ajuste en sí se hace
+    # más abajo, al final de todo el proceso -- confirmado con error
+    # real que un paso posterior (Conceptos/Regímenes) lo pisaba.
     excedentes_parciales = [r for r in resultados if r.status.value == "excedente_parcial"]
-    excedentes_parciales_sin_ajustar = []
-    for r in excedentes_parciales:
-        if len(r.remito_lines) == 1:
-            remito_line = r.remito_lines[0]
-            client.ajustar_cantidad_excedente_parcial(
-                remito_line.numero_remito, remito_line.codigo_articulo, r.invoice_line.cantidad
-            )
-        else:
-            excedentes_parciales_sin_ajustar.append(r)
+    excedentes_parciales_sin_ajustar = [r for r in excedentes_parciales if len(r.remito_lines) != 1]
 
     conceptos = proponer_conceptos_faltantes(resultados)
     if conceptos:
@@ -246,6 +240,13 @@ def procesar_factura(
         for etiqueta, regimen in regimenes_a_cargar:
             client.marcar_regimen_especial(etiqueta, regimen.importe)
         client.confirmar_regimenes_especiales()
+
+    for r in excedentes_parciales:
+        if len(r.remito_lines) == 1:
+            remito_line = r.remito_lines[0]
+            client.ajustar_cantidad_excedente_parcial(
+                remito_line.numero_remito, remito_line.codigo_articulo, r.invoice_line.cantidad
+            )
 
     if fecha_documento:
         # El usuario notó que "Fecha Documento" puede quedar pisada con

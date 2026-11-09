@@ -548,16 +548,31 @@ class CentumBrowserClient:
         (confirmado con DevTools real:
         txtRemitoCompraArticuloSuscriptoCantidadUnidadNivel_<n>_<guid>),
         así que se busca por el prefijo fijo dentro de la fila, igual que
-        con los demás campos con GUID de esta sesión."""
+        con los demás campos con GUID de esta sesión.
+
+        Confirmado con error real: un solo fill() no alcanza -- el script
+        reporta éxito pero en pantalla el valor queda sin cambiar, mismo
+        patrón que Fecha Documento (algún paso posterior lo pisa). Por
+        eso se llama al final de todo el proceso (ver watcher.py) y,
+        además, reintenta con verificación acá mismo por si no alcanza."""
 
         def accion():
             fila = self.page.locator("tr", has_text=codigo_articulo).filter(has_text=numero_remito)
             campo = fila.locator(
                 "input[id^='txtRemitoCompraArticuloSuscriptoCantidadUnidadNivel_']"
             )
-            campo.fill(str(int(round(nueva_cantidad))))
-            campo.press("Tab")
-            self.page.wait_for_timeout(500)
+            objetivo = str(int(round(nueva_cantidad)))
+            for _ in range(4):
+                campo.fill(objetivo)
+                campo.press("Tab")
+                self.page.wait_for_timeout(1000)
+                if campo.input_value().strip() == objetivo:
+                    return
+            print(
+                f"[aviso] La cantidad de {codigo_articulo} no quedó en {objetivo} "
+                f"(quedó en '{campo.input_value()}') -- revisala y corregila a mano "
+                "en Centum antes de guardar."
+            )
 
         self._paso(f"ajustar_cantidad_{codigo_articulo}", accion)
 
