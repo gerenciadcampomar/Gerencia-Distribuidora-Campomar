@@ -269,7 +269,7 @@ def procesar_factura(
         notificar_usuario(
             f"Compra lista para guardar ({slug})",
             f"Comprobante {numero_comprobante}: códigos, cantidades, precios y "
-            f"descuentos OK. Revisá y guardá en Centum.",
+            f"descuentos OK. {validacion.detalle} Revisá y guardá en Centum.",
         )
     else:
         notificar_usuario(
