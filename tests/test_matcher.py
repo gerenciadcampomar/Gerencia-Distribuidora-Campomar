@@ -75,12 +75,53 @@ def test_excedente_y_faltante(tmp_path):
     assert "XYZ999" in conceptos[0].observaciones
 
 
-def test_cantidad_difiere(tmp_path):
+def test_excedente_parcial_remito_trae_mas_que_la_factura(tmp_path):
+    # Confirmado con un comprobante real de prueba (Autopartes Bronco,
+    # código STOP937): se facturan 10, el proveedor entrega 12 -> hay que
+    # ajustar la cantidad a mano a lo facturado, dejando 2 pendientes.
     remitos = [RemitoArticleLine("Z837", "Impulsor", "r1", 3, 100.0)]
     facturas = [InvoiceLine("837", "Impulsor", 2, 100.0)]
 
     resultados = match_remitos_contra_factura(remitos, facturas, _mapping(tmp_path))
-    assert resultados[0].status == MatchStatus.CANTIDAD_DIFIERE
+    assert resultados[0].status == MatchStatus.EXCEDENTE_PARCIAL
+    assert resultados[0].cantidad_diferencia == 1
+
+
+def test_faltante_parcial_remito_trae_menos_que_la_factura(tmp_path):
+    # Confirmado con el mismo comprobante de prueba (código STOP936): se
+    # facturan 10, el proveedor entrega 8 -> la diferencia se carga como
+    # concepto "Mercaderías varias", igual que un faltante completo pero
+    # solo por lo que falta.
+    remitos = [RemitoArticleLine("Z837", "Impulsor", "r1", 2, 100.0)]
+    facturas = [InvoiceLine("837", "Impulsor", 3, 100.0)]
+
+    resultados = match_remitos_contra_factura(remitos, facturas, _mapping(tmp_path))
+    assert resultados[0].status == MatchStatus.FALTANTE_PARCIAL
+    assert resultados[0].cantidad_diferencia == 1
+
+    conceptos = proponer_conceptos_faltantes(resultados)
+    assert len(conceptos) == 1
+    assert conceptos[0].cantidad == 1
+    assert conceptos[0].precio == 100.0
+
+
+def test_mismo_codigo_en_dos_renglones_del_remito_se_suma(tmp_path):
+    # Bug real encontrado con un comprobante de prueba (código YNT722): el
+    # proveedor entrega el mismo artículo en dos renglones separados del
+    # remito (5 + 5), pero la factura lo pide en un solo renglón de 10.
+    # Antes de agrupar por código, esto daba un falso FALTANTE_PARCIAL (la
+    # primera línea) y un EXCEDENTE espurio (la segunda, porque la factura
+    # ya se había "gastado" en la primera).
+    remitos = [
+        RemitoArticleLine("Z837", "Impulsor", "r1", 5, 100.0),
+        RemitoArticleLine("Z837", "Impulsor", "r1", 5, 100.0),
+    ]
+    facturas = [InvoiceLine("837", "Impulsor", 10, 100.0)]
+
+    resultados = match_remitos_contra_factura(remitos, facturas, _mapping(tmp_path))
+    assert len(resultados) == 1
+    assert resultados[0].status == MatchStatus.OK
+    assert len(resultados[0].remito_lines) == 2
 
 
 def test_subtotal_propuesto_suma_ok_y_faltantes(tmp_path):

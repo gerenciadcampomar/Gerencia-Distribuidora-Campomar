@@ -39,10 +39,11 @@ from campomar_compras.validator import validar_subtotal
 
 ESTADO_LABEL = {
     MatchStatus.OK: "OK — tildar",
-    MatchStatus.CANTIDAD_DIFIERE: "REVISAR — cantidad difiere",
     MatchStatus.PRECIO_DIFIERE: "REVISAR — precio difiere",
     MatchStatus.EXCEDENTE: "NO TILDAR — remitido y no facturado",
     MatchStatus.FALTANTE: "CARGAR CONCEPTO — facturado y no remitido",
+    MatchStatus.FALTANTE_PARCIAL: "CARGAR CONCEPTO — remitido de menos",
+    MatchStatus.EXCEDENTE_PARCIAL: "REVISAR — remitido de más, ajustar cantidad a mano",
 }
 
 
@@ -61,7 +62,7 @@ def ejecutar(proveedor_slug: str, remitos_path: Path, factura_path: Path) -> int
 
     print(f"\n=== Conciliación proveedor '{proveedor_slug}' ===\n")
     for r in resultados:
-        codigo = r.remito_line.codigo_articulo if r.remito_line else r.invoice_line.codigo_proveedor
+        codigo = r.remito_lines[0].codigo_articulo if r.remito_lines else r.invoice_line.codigo_proveedor
         print(f"  [{ESTADO_LABEL[r.status]}] {codigo}  {r.notes}")
 
     conceptos = proponer_conceptos_faltantes(resultados)

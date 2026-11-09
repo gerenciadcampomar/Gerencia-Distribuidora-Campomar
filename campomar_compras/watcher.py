@@ -192,9 +192,18 @@ def procesar_factura(
 
     excedentes = [r for r in resultados if r.status.value == "excedente"]
     for r in excedentes:
-        client.marcar_articulo_para_eliminar(r.remito_line.numero_remito, r.remito_line.codigo_articulo)
+        # Un código puede venir repetido en más de un renglón del remito
+        # (ver matcher.py) -- si está excedente, se elimina cada renglón.
+        for remito_line in r.remito_lines:
+            client.marcar_articulo_para_eliminar(remito_line.numero_remito, remito_line.codigo_articulo)
     if excedentes:
         client.eliminar_articulos_marcados()
+
+    # Excedente parcial (mismo código, el remito trae más cantidad que la
+    # factura) todavía no se ajusta solo -- falta calibrar el campo
+    # "Cantidad Ajustada" contra la pantalla real de Centum. Por ahora
+    # queda solo marcado para revisión manual (ver reporte más abajo).
+    excedentes_parciales = [r for r in resultados if r.status.value == "excedente_parcial"]
 
     for concepto in proponer_conceptos_faltantes(resultados):
         client.agregar_concepto(concepto)
@@ -259,8 +268,19 @@ def procesar_factura(
         "",
     ]
     for r in resultados:
-        codigo = r.remito_line.codigo_articulo if r.remito_line else r.invoice_line.codigo_proveedor
+        codigo = r.remito_lines[0].codigo_articulo if r.remito_lines else r.invoice_line.codigo_proveedor
         lineas_reporte.append(f"  [{r.status.value}] {codigo}  {r.notes}")
+    if excedentes_parciales:
+        lineas_reporte.append("")
+        lineas_reporte.append(
+            ">>> ATENCIÓN: hay artículos remitidos de más (el proveedor entregó más "
+            "de lo facturado) -- ajustá la cantidad a mano en Centum antes de guardar: <<<"
+        )
+        for r in excedentes_parciales:
+            codigo = r.remito_lines[0].codigo_articulo
+            lineas_reporte.append(
+                f"  {codigo}: sobran {r.cantidad_diferencia} (dejar en {r.invoice_line.cantidad})"
+            )
     if regimenes:
         cargados = [r for r in regimenes if r not in regimenes_sin_traducir]
         if cargados:

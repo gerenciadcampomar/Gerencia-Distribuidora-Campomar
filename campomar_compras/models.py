@@ -46,17 +46,33 @@ class InvoiceLine:
 
 class MatchStatus(str, Enum):
     OK = "ok"
-    CANTIDAD_DIFIERE = "cantidad_difiere"
     PRECIO_DIFIERE = "precio_difiere"
-    EXCEDENTE = "excedente"  # remitido, no facturado -> no se carga
-    FALTANTE = "faltante"  # facturado, no remitido -> concepto "Mercaderías varias"
+    EXCEDENTE = "excedente"  # código remitido entero, no está en la factura -> tachito
+    FALTANTE = "faltante"  # facturado, no remitido en absoluto -> concepto "Mercaderías varias"
+    FALTANTE_PARCIAL = "faltante_parcial"
+    """Mismo código en ambos, pero el remito trae MENOS cantidad que la
+    factura (ej. se facturan 10, el proveedor entrega 8) -- la diferencia
+    se carga como concepto "Mercaderías varias", igual que un FALTANTE
+    completo pero solo por la cantidad que falta."""
+    EXCEDENTE_PARCIAL = "excedente_parcial"
+    """Mismo código en ambos, pero el remito trae MÁS cantidad que la
+    factura (ej. se facturan 10, el proveedor entrega 12) -- hay que bajar
+    la cantidad del artículo a la cantidad facturada (campo "Cantidad
+    Ajustada" en Centum), dejando el resto pendiente de suscribir para
+    otra factura del proveedor."""
 
 
 @dataclass
 class MatchResult:
     status: MatchStatus
-    remito_line: RemitoArticleLine | None = None
+    remito_lines: list[RemitoArticleLine] = field(default_factory=list)
+    """Una o más líneas de Centum que corresponden a este resultado -- más
+    de una cuando el remito trae el mismo código repetido en renglones
+    separados (ver matcher.py: se agrupan por código antes de comparar)."""
     invoice_line: InvoiceLine | None = None
+    cantidad_diferencia: float | None = None
+    """Solo para FALTANTE_PARCIAL/EXCEDENTE_PARCIAL: cuánto falta o sobra,
+    siempre como número positivo."""
     notes: str = ""
 
 
@@ -70,10 +86,13 @@ class ConceptoFaltante:
     precio: float = 0.0
 
     @classmethod
-    def desde_invoice_line(cls, line: InvoiceLine) -> "ConceptoFaltante":
+    def desde_invoice_line(cls, line: InvoiceLine, cantidad: float | None = None) -> "ConceptoFaltante":
+        """`cantidad` por defecto es la de la línea entera (faltante
+        completo); se puede pasar explícita para un faltante parcial
+        (cuando el remito trajo parte de la cantidad facturada)."""
         return cls(
             observaciones=f"{line.codigo_proveedor} - {line.descripcion}".strip(" -"),
-            cantidad=line.cantidad,
+            cantidad=cantidad if cantidad is not None else line.cantidad,
             precio=line.precio_unitario,
         )
 
