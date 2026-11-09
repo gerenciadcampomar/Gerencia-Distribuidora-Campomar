@@ -205,8 +205,12 @@ def procesar_factura(
     # queda solo marcado para revisión manual (ver reporte más abajo).
     excedentes_parciales = [r for r in resultados if r.status.value == "excedente_parcial"]
 
-    for concepto in proponer_conceptos_faltantes(resultados):
-        client.agregar_concepto(concepto)
+    conceptos = proponer_conceptos_faltantes(resultados)
+    if conceptos:
+        client.abrir_conceptos()
+        for i, concepto in enumerate(conceptos):
+            es_ultimo = i == len(conceptos) - 1
+            client.cargar_concepto_mercaderias_varias(concepto, confirmar=es_ultimo)
 
     regimenes_parser = PROVIDER_REGIMENES_PARSERS.get(slug)
     regimenes = regimenes_parser(pdf_path) if regimenes_parser else []

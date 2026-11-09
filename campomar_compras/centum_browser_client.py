@@ -546,29 +546,50 @@ class CentumBrowserClient:
 
     # --- Conceptos y regímenes especiales -------------------------------
 
-    def agregar_concepto(self, concepto: ConceptoFaltante) -> None:
-        def accion():
-            # Confirmado con error real (mismo listado de 7 botones
-            # "Agregar" que reveló abrir_remitos_pendientes): el de esta
-            # sección es #btnAgregarConceptos.
-            self.page.locator("#btnAgregarConceptos").click()
-            self.page.get_by_text(CentumTextos.CONCEPTO_MERCADERIAS_VARIAS).click()
-            # Confirmado con error real: get_by_label("Observaciones") era
-            # ambiguo (resolvía a 5 elementos) -- el campo real es
-            # #txtObservaciones. También confirmado con error real: el
-            # panel tarda en desplegarse después de elegir "Mercaderías
-            # varias", el campo existe en el DOM pero todavía no es
-            # visible -- mismo patrón que el botón de Regímenes
-            # Especiales, se scrollea hasta él antes de escribir.
-            campo_observaciones = self.page.locator("#txtObservaciones")
-            campo_observaciones.scroll_into_view_if_needed()
-            campo_observaciones.fill(concepto.observaciones)
-            # Coma decimal, no punto -- confirmado necesario en Regímenes
-            # Especiales, se asume el mismo comportamiento acá.
-            self.page.get_by_label("Cantidad").fill(_formato_decimal_ar(concepto.cantidad))
-            self.page.get_by_label("Precio").fill(_formato_decimal_ar(concepto.precio))
+    def abrir_conceptos(self) -> None:
+        """Abre la grilla completa de Conceptos (34 filas predefinidas,
+        igual que Regímenes Especiales -- no es un formulario aparte).
+        Confirmado con error real: el botón de esta sección es
+        #btnAgregarConceptos (mismo listado de 7 botones "Agregar" que
+        reveló abrir_remitos_pendientes)."""
 
-        self._paso("agregar_concepto", accion)
+        def accion():
+            boton = self.page.locator("#btnAgregarConceptos")
+            boton.scroll_into_view_if_needed()
+            boton.click()
+            self.page.wait_for_load_state("networkidle")
+
+        self._paso("abrir_conceptos", accion)
+
+    def cargar_concepto_mercaderias_varias(self, concepto: ConceptoFaltante, confirmar: bool) -> None:
+        """Completa la fila "02 - Mercaderías varias" y la confirma.
+        `confirmar=False` usa el botón "Agregar" (agrega esta línea y deja
+        la grilla abierta para cargar otro faltante); `confirmar=True` usa
+        "Agregar y Volver" (agrega esta línea y cierra la grilla) -- para
+        el último faltante de la lista.
+
+        Confirmado con DevTools real: los 3 campos de la fila tienen un
+        GUID en el id que cambia en cada carga de página (ej.
+        txtConceptoObservacion_9_1ecd0480-5766-461e-8f76-e4fd2d79c0b3), así
+        que no se puede usar el id completo -- se ubica la fila por su
+        texto y se busca cada campo por el prefijo fijo del id, igual que
+        se hace con el precio de cada jurisdicción en Regímenes
+        Especiales. Los botones sí son fijos: #btnAgregarConceptosOK y
+        #btnAgregarConceptosOKYVolver. Observaciones es "<código>
+        FALTANTE" (formato confirmado por el usuario), Precio con coma
+        decimal, Cantidad como entero."""
+
+        def accion():
+            fila = self.page.locator("tr", has_text=CentumTextos.CONCEPTO_MERCADERIAS_VARIAS).first
+            fila.scroll_into_view_if_needed()
+            fila.locator("input[id^='txtConceptoObservacion_']").fill(concepto.observaciones)
+            fila.locator("input[id^='txtConceptoPrecio_']").fill(_formato_decimal_ar(concepto.precio))
+            fila.locator("input[id^='txtConceptoCantidad_']").fill(str(int(round(concepto.cantidad))))
+            boton_id = "#btnAgregarConceptosOKYVolver" if confirmar else "#btnAgregarConceptosOK"
+            self.page.locator(boton_id).click()
+            self.page.wait_for_load_state("networkidle")
+
+        self._paso("cargar_concepto_mercaderias_varias", accion)
 
     def abrir_regimenes_no_asignados(self) -> None:
         """Abre la lista completa de Regímenes Especiales disponibles
