@@ -1,9 +1,11 @@
 """Validación final antes de que un humano guarde la compra en Centum.
 
-Compara el "Subtotal sin Impuestos con Descuento" que quedaría en el sistema
-(según los MatchResult ya resueltos por matcher.py) contra el neto declarado
-en el PDF del proveedor. Sólo si esto da OK se le indica al usuario que puede
-guardar la compra manualmente.
+Compara el "Subtotal sin Impuestos con Descuento" -- preferentemente leído
+de la pantalla real de Centum después de aplicar todos los cambios, o si no
+está disponible, recalculado a partir de los MatchResult ya resueltos por
+matcher.py -- contra el neto declarado en el PDF del proveedor (que manda:
+es el comprobante real). Sólo si esto da OK se le indica al usuario que
+puede guardar la compra manualmente.
 """
 
 from __future__ import annotations
@@ -25,14 +27,26 @@ def validar_subtotal(
     resultados: list[MatchResult],
     totales_factura: InvoiceTotals,
     tolerancia: float | None = None,
+    subtotal_sistema_real: float | None = None,
 ) -> ValidationResult:
     """tolerancia: el límite de NO-coincide (más allá de esto, falla). Si
     no se pasa, se calcula sola como el máximo entre un piso fijo ($1,
-    para facturas chicas) y el 0,5% del subtotal facturado."""
+    para facturas chicas) y el 0,5% del subtotal facturado.
+
+    subtotal_sistema_real: el "Subtotal sin Impuestos con Descuento" leído
+    de la pantalla real de Centum (ver
+    CentumBrowserClient.leer_subtotal_con_descuento), después de aplicar
+    todos los cambios (remitos, conceptos, regímenes, ajustes de
+    cantidad). Si se pasa, se usa éste en vez de recalcularlo nosotros en
+    Python -- confirmado con el usuario que Centum puede tener su propio
+    redondeo al calcular descuentos que no siempre coincide con una
+    cuenta simple hecha acá. El comprobante del proveedor manda: se
+    compara su total contra lo que Centum REALMENTE calculó, no contra
+    una predicción."""
     if tolerancia is None:
         tolerancia = max(TOLERANCIA_PESOS_SILENCIOSA, TOLERANCIA_PORCENTAJE * totales_factura.subtotal_neto)
 
-    subtotal_sistema = subtotal_propuesto(resultados)
+    subtotal_sistema = subtotal_sistema_real if subtotal_sistema_real is not None else subtotal_propuesto(resultados)
     diferencia = round(subtotal_sistema - totales_factura.subtotal_neto, 2)
     porcentaje_diferencia = (
         abs(diferencia) / totales_factura.subtotal_neto * 100 if totales_factura.subtotal_neto else 0.0

@@ -262,7 +262,18 @@ def procesar_factura(
     # tener que scrollear.
     client.mostrar_totales()
 
-    validacion = validar_subtotal(resultados, totales_factura)
+    # Se compara contra el total REAL que Centum calculó (leído de la
+    # pantalla), no contra nuestra propia cuenta en Python -- Centum
+    # puede tener su propio redondeo al calcular descuentos que no
+    # siempre coincide exacto con una cuenta simple hecha acá. Si por
+    # algún motivo no se puede leer, se cae al cálculo propio como
+    # respaldo en vez de frenar todo el proceso.
+    try:
+        subtotal_sistema_real = client.leer_subtotal_con_descuento()
+    except PasoCentumError:
+        subtotal_sistema_real = None
+
+    validacion = validar_subtotal(resultados, totales_factura, subtotal_sistema_real=subtotal_sistema_real)
 
     numero_comprobante = f"{punto_venta}-{numero}" if punto_venta and numero else pdf_path.name
     if validacion.ok:

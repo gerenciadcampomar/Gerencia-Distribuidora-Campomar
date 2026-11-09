@@ -336,6 +336,24 @@ class CentumBrowserClient:
 
         self._paso("fijar_fecha_documento", accion)
 
+    def leer_subtotal_con_descuento(self) -> float:
+        """Lee "Subtotal sin Impuestos con Descuento" tal como quedó
+        calculado DE VERDAD en Centum, para validar contra eso en vez de
+        contra nuestra propia cuenta en Python -- confirmado con el
+        usuario que Centum puede tener su propio redondeo al calcular
+        descuentos (un 20% nominal que en la práctica da ~20,08%), así
+        que recalcularlo nosotros con matemática simple no siempre
+        coincide con lo que Centum termina guardando. El comprobante del
+        proveedor manda: se compara su total contra esto, no al revés.
+        Confirmado con DevTools real: id fijo #txtSubtotalSinImpuestosConDescuento
+        (sin GUID)."""
+
+        def accion():
+            valor = self.page.locator("#txtSubtotalSinImpuestosConDescuento").input_value()
+            return _num_eu(valor)
+
+        return self._paso("leer_subtotal_con_descuento", accion)
+
     def mostrar_totales(self) -> None:
         """Deja la pantalla scrolleada en la sección Totales (subtotal,
         IVA, Regímenes Especiales, total) al terminar todo el proceso,

@@ -10,6 +10,24 @@ def _mapping(tmp_path) -> CodeMappingStore:
     return store
 
 
+def test_subtotal_sistema_real_pisa_el_calculo_propio(tmp_path):
+    # Caso real reportado: nuestra propia cuenta en Python daba un
+    # subtotal muy cercano a la factura (diferencia silenciosa, <$1),
+    # pero el subtotal REAL que Centum calculó (con su propio redondeo
+    # al aplicar el descuento) estaba a ~$164 de la factura -- más de
+    # $1, había que aclararlo. Si se pasa subtotal_sistema_real, tiene
+    # que usarse ESE en vez de recalcular con subtotal_propuesto().
+    remitos = [RemitoArticleLine("RERNMI37A859", "Regulador", "r1", 1, 184590.58)]  # igual a la factura
+    facturas = [InvoiceLine("RNMI 37A859", "Regulador", 1, 184590.58)]
+    resultados = match_remitos_contra_factura(remitos, facturas, _mapping(tmp_path))
+
+    totales = InvoiceTotals(subtotal_neto=184590.58)
+    resultado = validar_subtotal(resultados, totales, subtotal_sistema_real=184426.63)
+    assert resultado.ok
+    assert resultado.subtotal_sistema == 184426.63
+    assert "$163" in resultado.detalle
+
+
 def test_validacion_ok_diferencia_chica_no_se_menciona(tmp_path):
     # Pedido del usuario: hasta $1 de diferencia, el mensaje no tiene que
     # aclarar nada -- es tan chico que no vale la pena mencionarlo.
