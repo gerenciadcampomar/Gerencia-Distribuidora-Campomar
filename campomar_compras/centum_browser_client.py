@@ -586,7 +586,11 @@ class CentumBrowserClient:
         decimal, Cantidad como entero."""
 
         def accion():
-            fila = self.page.locator("tr", has_text=CentumTextos.CONCEPTO_MERCADERIAS_VARIAS).first
+            # "not visible" durante 30s seguidos (no era timing): hay una
+            # fila oculta en el DOM con el mismo texto (plantilla del
+            # grid) antes que la visible -- se filtra a solo filas
+            # visibles.
+            fila = self.page.locator("tr:visible", has_text=CentumTextos.CONCEPTO_MERCADERIAS_VARIAS).first
             fila.scroll_into_view_if_needed()
             fila.locator("input[id^='txtConceptoObservacion_']").fill(concepto.observaciones)
             fila.locator("input[id^='txtConceptoPrecio_']").fill(_formato_decimal_ar(concepto.precio))
