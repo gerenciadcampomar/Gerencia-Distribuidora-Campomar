@@ -30,11 +30,27 @@ def test_fecha_ralux_sin_espacio_tras_dos_puntos():
     assert m.groups() == ("06", "08", "2026")
 
 
+def test_identificar_por_razon_social_cuando_no_hay_cuit(tmp_path, monkeypatch):
+    """Comprobante "así nomás" sin CUIT pero que sí menciona el nombre del
+    proveedor en el texto -- debe identificarlo antes de recurrir al
+    nombre del archivo."""
+    monkeypatch.setattr(provider_identificacion, "extraer_cuit_proveedor", lambda pdf_path: None)
+    monkeypatch.setattr(
+        provider_identificacion,
+        "extraer_texto",
+        lambda pdf_path: "DOLZ ARGENTINA S.A.U.\nFECHA: 09/11/2026\n...",
+    )
+    pdf_falso = tmp_path / "comprobante_generico.pdf"
+    pdf_falso.write_bytes(b"x")
+    assert identificar_proveedor(pdf_falso) == "dolz"
+
+
 def test_identificar_por_nombre_archivo_cuando_no_hay_cuit(tmp_path, monkeypatch):
     """Algunos comprobantes (remitos/vales escaneados) no traen CUIT ni
     ningún dato identificatorio -- el nombre del archivo sirve de
     respaldo, sin importar mayúsculas/minúsculas ni qué más diga."""
     monkeypatch.setattr(provider_identificacion, "extraer_cuit_proveedor", lambda pdf_path: None)
+    monkeypatch.setattr(provider_identificacion, "extraer_texto", lambda pdf_path: "texto sin nombre de proveedor")
     pdf_falso = tmp_path / "Nosso_factura123.pdf"
     pdf_falso.write_bytes(b"contenido falso, no se usa")
     assert identificar_proveedor(pdf_falso) == "nosso"
@@ -42,6 +58,7 @@ def test_identificar_por_nombre_archivo_cuando_no_hay_cuit(tmp_path, monkeypatch
 
 def test_identificar_por_nombre_archivo_sin_coincidencia(tmp_path, monkeypatch):
     monkeypatch.setattr(provider_identificacion, "extraer_cuit_proveedor", lambda pdf_path: None)
+    monkeypatch.setattr(provider_identificacion, "extraer_texto", lambda pdf_path: "texto sin nombre de proveedor")
     pdf_falso = tmp_path / "comprobante_generico.pdf"
     pdf_falso.write_bytes(b"x")
     assert identificar_proveedor(pdf_falso) is None

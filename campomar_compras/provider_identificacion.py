@@ -47,12 +47,26 @@ def _cargar_tabla_cuits() -> dict[str, str]:
     return json.loads(CUITS_PATH.read_text(encoding="utf-8"))
 
 
+def _identificar_por_razon_social(pdf_path: Path) -> str | None:
+    """Respaldo cuando el comprobante no trae CUIT (pasa con remitos/vales
+    "así nomás" hechos a mano, sin los datos fiscales completos, pero que
+    sí mencionan el nombre del proveedor en algún lado del texto): busca
+    el slug de un proveedor conocido (ej. "dolz") como substring del
+    texto del PDF completo. No hace falta que coincida exacto con el
+    nombre de Centum (nombres_centum.json) ni con mayúsculas/minúsculas."""
+    texto = extraer_texto(pdf_path).lower()
+    for slug in set(_cargar_tabla_cuits().values()):
+        if slug in texto:
+            return slug
+    return None
+
+
 def _identificar_por_nombre_archivo(pdf_path: Path) -> str | None:
-    """Respaldo para comprobantes que no traen CUIT ni ningún dato
-    identificatorio adentro (pasa con algunos remitos/vales escaneados):
-    si el nombre del archivo contiene el slug de un proveedor conocido
-    (ej. "Nosso_factura123.pdf" -> contiene "nosso"), lo usa. No hace
-    falta un nombre exacto ni mayúsculas/minúsculas."""
+    """Último respaldo, para comprobantes que no traen ni CUIT ni ningún
+    nombre identificatorio adentro (pasa con algunos remitos/vales
+    escaneados): si el nombre del archivo contiene el slug de un
+    proveedor conocido (ej. "Nosso_factura123.pdf" -> contiene "nosso"),
+    lo usa. No hace falta un nombre exacto ni mayúsculas/minúsculas."""
     nombre = pdf_path.stem.lower()
     for slug in set(_cargar_tabla_cuits().values()):
         if slug in nombre:
@@ -62,14 +76,17 @@ def _identificar_por_nombre_archivo(pdf_path: Path) -> str | None:
 
 def identificar_proveedor(pdf_path: Path) -> str | None:
     """Devuelve el slug de proveedor (ej. 'nosso', 'ralux') a partir del
-    PDF. Primero intenta por el CUIT que trae el documento; si no lo
-    encuentra (o el CUIT no está en la tabla), prueba por el nombre del
-    archivo como respaldo. Devuelve None si ninguna de las dos funciona."""
+    PDF, probando en orden: CUIT -> nombre del proveedor dentro del texto
+    -> nombre del archivo. Devuelve None si ninguna de las tres
+    funciona."""
     cuit = extraer_cuit_proveedor(pdf_path)
     if cuit is not None:
         slug = _cargar_tabla_cuits().get(cuit)
         if slug is not None:
             return slug
+    slug = _identificar_por_razon_social(pdf_path)
+    if slug is not None:
+        return slug
     return _identificar_por_nombre_archivo(pdf_path)
 
 
