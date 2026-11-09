@@ -30,6 +30,37 @@ def validar_subtotal(
     subtotal_sistema = subtotal_propuesto(resultados)
     diferencia = round(subtotal_sistema - totales_factura.subtotal_neto, 2)
 
+    # Confirmado con error real: si el parser no extrajo ninguna línea de
+    # la factura (subtotal_neto=0) y el remito entero queda como
+    # excedente, subtotal_sistema también da 0 y "0 coincide con 0"
+    # pasaba la validación -- un PASS falso peligrosísimo, nunca hay que
+    # guardar algo así. Se corta acá, antes de comparar por tolerancia.
+    hay_algun_match_con_factura = any(r.invoice_line is not None for r in resultados)
+    if resultados and not hay_algun_match_con_factura:
+        return ValidationResult(
+            ok=False,
+            subtotal_sistema=subtotal_sistema,
+            subtotal_factura=totales_factura.subtotal_neto,
+            diferencia=diferencia,
+            detalle=(
+                "NO coincide: ningún artículo de la factura matcheó con nada del "
+                "remito (todo quedó como excedente) -- probablemente el parser no "
+                "leyó bien la factura. Revisar antes de continuar, NO guardar."
+            ),
+        )
+    if totales_factura.subtotal_neto == 0:
+        return ValidationResult(
+            ok=False,
+            subtotal_sistema=subtotal_sistema,
+            subtotal_factura=totales_factura.subtotal_neto,
+            diferencia=diferencia,
+            detalle=(
+                "NO coincide: el subtotal de la factura dio $0 -- probablemente el "
+                "parser no extrajo ninguna línea del PDF. Revisar antes de "
+                "continuar, NO guardar."
+            ),
+        )
+
     if abs(diferencia) <= tolerancia:
         return ValidationResult(
             ok=True,
