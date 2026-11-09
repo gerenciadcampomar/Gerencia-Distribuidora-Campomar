@@ -558,6 +558,12 @@ class CentumBrowserClient:
             boton.scroll_into_view_if_needed()
             boton.click()
             self.page.wait_for_load_state("networkidle")
+            # Confirmado con error real: la grilla sigue re-renderizando /
+            # animando un instante después de que la red queda en reposo
+            # ("element is not stable" / "not attached to the DOM" al
+            # intentar scrollear hasta una fila) -- se espera a que se
+            # asiente antes de interactuar con las filas.
+            self.page.wait_for_timeout(1000)
 
         self._paso("abrir_conceptos", accion)
 
@@ -588,6 +594,10 @@ class CentumBrowserClient:
             boton_id = "#btnAgregarConceptosOKYVolver" if confirmar else "#btnAgregarConceptosOK"
             self.page.locator(boton_id).click()
             self.page.wait_for_load_state("networkidle")
+            if not confirmar:
+                # Si hay más faltantes por cargar, la grilla se reacomoda
+                # para la próxima fila -- misma espera que en abrir_conceptos.
+                self.page.wait_for_timeout(1000)
 
         self._paso("cargar_concepto_mercaderias_varias", accion)
 
