@@ -553,9 +553,14 @@ class CentumBrowserClient:
             # sección es #btnAgregarConceptos.
             self.page.locator("#btnAgregarConceptos").click()
             self.page.get_by_text(CentumTextos.CONCEPTO_MERCADERIAS_VARIAS).click()
-            self.page.get_by_label("Observaciones").fill(concepto.observaciones)
-            self.page.get_by_label("Cantidad").fill(str(concepto.cantidad))
-            self.page.get_by_label("Precio").fill(str(concepto.precio))
+            # Confirmado con error real: get_by_label("Observaciones") era
+            # ambiguo (resolvía a 5 elementos) -- el campo real es
+            # #txtObservaciones.
+            self.page.locator("#txtObservaciones").fill(concepto.observaciones)
+            # Coma decimal, no punto -- confirmado necesario en Regímenes
+            # Especiales, se asume el mismo comportamiento acá.
+            self.page.get_by_label("Cantidad").fill(_formato_decimal_ar(concepto.cantidad))
+            self.page.get_by_label("Precio").fill(_formato_decimal_ar(concepto.precio))
 
         self._paso("agregar_concepto", accion)
 
