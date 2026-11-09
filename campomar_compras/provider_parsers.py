@@ -294,9 +294,14 @@ def parse_percepciones_dolz(pdf_path: Path) -> list[RegimenEspecial]:
 
 
 BRONCO_LINEA_RE = re.compile(
-    r"(?P<codigo>[A-Z]{2,8}\d{2,6})\s*(?P<resto>.*?)\s+(?P<cantidad>\d+)\s+"
+    # El código puede venir como letras+número ("STOP934") o número solo,
+    # a veces con un sufijo de marca pegado ("1401 JRG") -- confirmado
+    # con dos comprobantes de prueba reales distintos del mismo
+    # proveedor. Anclado al principio del renglón (MULTILINE) para que no
+    # agarre números sueltos del encabezado (ej. "COMPROBANTE 1-25548").
+    r"^(?P<codigo>[A-Z]{2,8}\d{2,6}|\d{2,8}(?:\s+JRG)?)\s*(?P<resto>.*?)\s+(?P<cantidad>\d+)\s+"
     r"\$\s*(?P<precio>[\d.]+,\d{2})\s+\$\s*(?P<total>[\d.]+,\d{2})",
-    re.DOTALL,
+    re.DOTALL | re.MULTILINE,
 )
 
 

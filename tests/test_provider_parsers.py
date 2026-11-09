@@ -175,6 +175,39 @@ def test_bronco_linea_con_numero_espurio_antes_de_cantidad():
     assert _num_eu(m.group("total")) == 19126.11
 
 
+def test_bronco_linea_codigo_numerico_con_sufijo_jrg():
+    # Confirmado con un segundo comprobante de prueba real del mismo
+    # proveedor: el código a veces es puramente numérico, a veces con un
+    # sufijo de marca pegado ("1401 JRG"), nunca letras al principio como
+    # en el primer comprobante (ej. "STOP934").
+    texto = "1401 JRG INTERRUPTOR DE RETROMARCHA FORD FALCON HASTA ´82 10 $ 3.851,52 $ 30.812,19"
+    m = next(BRONCO_LINEA_RE.finditer(texto))
+    assert m.group("codigo") == "1401 JRG"
+    assert m.group("resto").strip() == "INTERRUPTOR DE RETROMARCHA FORD FALCON HASTA ´82"
+    assert _num_eu(m.group("cantidad")) == 10.0
+
+
+def test_bronco_linea_codigo_numerico_sin_sufijo():
+    texto = "1934 INTERRUPTOR DE FRENO DODGE 1500 - CITROEN 3CV 10 $ 1.333,13 $ 10.665,00"
+    m = next(BRONCO_LINEA_RE.finditer(texto))
+    assert m.group("codigo") == "1934"
+    assert _num_eu(m.group("cantidad")) == 10.0
+
+
+def test_bronco_linea_no_agarra_numeros_del_encabezado():
+    # El regex antes agarraba "25548" del encabezado "COMPROBANTE
+    # 1-25548" como si fuera un código de artículo -- anclado al
+    # principio del renglón para evitarlo.
+    texto = (
+        "AUTOPARTES BRONCO – COMPROBANTE 1-25548\n"
+        "FECHA: 04/11/2026\n"
+        "1934 INTERRUPTOR DE FRENO DODGE 10 $ 1.333,13 $ 10.665,00"
+    )
+    resultados = list(BRONCO_LINEA_RE.finditer(texto))
+    assert len(resultados) == 1
+    assert resultados[0].group("codigo") == "1934"
+
+
 def test_bronco_totales_sin_subtotal_explicito(tmp_path, monkeypatch):
     # Autopartes Bronco no trae renglones de Subtotal/IVA/Total -- se
     # calcula sumando el "Precio total" de cada línea, con IVA en 0 (no
