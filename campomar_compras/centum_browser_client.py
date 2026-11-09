@@ -532,6 +532,35 @@ class CentumBrowserClient:
 
         self._paso(f"marcar_para_eliminar_{codigo_articulo}", accion)
 
+    def ajustar_cantidad_excedente_parcial(
+        self, numero_remito: str, codigo_articulo: str, nueva_cantidad: float
+    ) -> None:
+        """Para un excedente parcial (mismo código que la factura, pero el
+        remito trae más cantidad que lo facturado): baja la cantidad del
+        artículo a lo facturado, dejando el resto pendiente de suscribir
+        para otra factura del proveedor -- mismo efecto que el tachito,
+        pero parcial.
+
+        Confirmado con el usuario viendo la pantalla real: la columna
+        "Cantidad" (sin más) queda gris, no editable -- el campo que
+        realmente hay que tocar es "Cantidad Unidad Nivel" (blanco,
+        editable). Su id trae un GUID que cambia en cada carga de página
+        (confirmado con DevTools real:
+        txtRemitoCompraArticuloSuscriptoCantidadUnidadNivel_<n>_<guid>),
+        así que se busca por el prefijo fijo dentro de la fila, igual que
+        con los demás campos con GUID de esta sesión."""
+
+        def accion():
+            fila = self.page.locator("tr", has_text=codigo_articulo).filter(has_text=numero_remito)
+            campo = fila.locator(
+                "input[id^='txtRemitoCompraArticuloSuscriptoCantidadUnidadNivel_']"
+            )
+            campo.fill(str(int(round(nueva_cantidad))))
+            campo.press("Tab")
+            self.page.wait_for_timeout(500)
+
+        self._paso(f"ajustar_cantidad_{codigo_articulo}", accion)
+
     def eliminar_articulos_marcados(self) -> None:
         """Saca del comprobante actual todos los artículos tildados con
         marcar_articulo_para_eliminar. Confirmado con DevTools: botón sin

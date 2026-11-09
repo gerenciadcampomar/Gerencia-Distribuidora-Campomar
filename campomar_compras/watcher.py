@@ -200,10 +200,21 @@ def procesar_factura(
         client.eliminar_articulos_marcados()
 
     # Excedente parcial (mismo código, el remito trae más cantidad que la
-    # factura) todavía no se ajusta solo -- falta calibrar el campo
-    # "Cantidad Ajustada" contra la pantalla real de Centum. Por ahora
-    # queda solo marcado para revisión manual (ver reporte más abajo).
+    # factura): se baja la cantidad a lo facturado, dejando el resto
+    # pendiente de suscribir para otra factura del proveedor. Si el
+    # código vino repetido en más de un renglón del remito, no hay forma
+    # de decidir sola en cuál de los varios aplicar el ajuste -- ahí
+    # queda para revisión manual (ver reporte).
     excedentes_parciales = [r for r in resultados if r.status.value == "excedente_parcial"]
+    excedentes_parciales_sin_ajustar = []
+    for r in excedentes_parciales:
+        if len(r.remito_lines) == 1:
+            remito_line = r.remito_lines[0]
+            client.ajustar_cantidad_excedente_parcial(
+                remito_line.numero_remito, remito_line.codigo_articulo, r.invoice_line.cantidad
+            )
+        else:
+            excedentes_parciales_sin_ajustar.append(r)
 
     conceptos = proponer_conceptos_faltantes(resultados)
     if conceptos:
@@ -274,16 +285,26 @@ def procesar_factura(
     for r in resultados:
         codigo = r.remito_lines[0].codigo_articulo if r.remito_lines else r.invoice_line.codigo_proveedor
         lineas_reporte.append(f"  [{r.status.value}] {codigo}  {r.notes}")
-    if excedentes_parciales:
+    excedentes_parciales_ajustados = [r for r in excedentes_parciales if r not in excedentes_parciales_sin_ajustar]
+    if excedentes_parciales_ajustados:
         lineas_reporte.append("")
-        lineas_reporte.append(
-            ">>> ATENCIÓN: hay artículos remitidos de más (el proveedor entregó más "
-            "de lo facturado) -- ajustá la cantidad a mano en Centum antes de guardar: <<<"
-        )
-        for r in excedentes_parciales:
+        lineas_reporte.append("Cantidad ajustada (el proveedor entregó de más que lo facturado):")
+        for r in excedentes_parciales_ajustados:
             codigo = r.remito_lines[0].codigo_articulo
             lineas_reporte.append(
-                f"  {codigo}: sobran {r.cantidad_diferencia} (dejar en {r.invoice_line.cantidad})"
+                f"  {codigo}: sobraban {r.cantidad_diferencia}, quedó en {r.invoice_line.cantidad}"
+            )
+    if excedentes_parciales_sin_ajustar:
+        lineas_reporte.append("")
+        lineas_reporte.append(
+            ">>> ATENCIÓN: hay artículos remitidos de más en más de un renglón repetido "
+            "del mismo código -- no se pudo decidir solo cuál ajustar, hacelo a mano: <<<"
+        )
+        for r in excedentes_parciales_sin_ajustar:
+            codigo = r.remito_lines[0].codigo_articulo
+            lineas_reporte.append(
+                f"  {codigo}: sobran {r.cantidad_diferencia} entre {len(r.remito_lines)} renglones "
+                f"(dejar {r.invoice_line.cantidad} en total)"
             )
     if regimenes:
         cargados = [r for r in regimenes if r not in regimenes_sin_traducir]
