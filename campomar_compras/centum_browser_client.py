@@ -555,8 +555,14 @@ class CentumBrowserClient:
             self.page.get_by_text(CentumTextos.CONCEPTO_MERCADERIAS_VARIAS).click()
             # Confirmado con error real: get_by_label("Observaciones") era
             # ambiguo (resolvía a 5 elementos) -- el campo real es
-            # #txtObservaciones.
-            self.page.locator("#txtObservaciones").fill(concepto.observaciones)
+            # #txtObservaciones. También confirmado con error real: el
+            # panel tarda en desplegarse después de elegir "Mercaderías
+            # varias", el campo existe en el DOM pero todavía no es
+            # visible -- mismo patrón que el botón de Regímenes
+            # Especiales, se scrollea hasta él antes de escribir.
+            campo_observaciones = self.page.locator("#txtObservaciones")
+            campo_observaciones.scroll_into_view_if_needed()
+            campo_observaciones.fill(concepto.observaciones)
             # Coma decimal, no punto -- confirmado necesario en Regímenes
             # Especiales, se asume el mismo comportamiento acá.
             self.page.get_by_label("Cantidad").fill(_formato_decimal_ar(concepto.cantidad))
