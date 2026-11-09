@@ -5,7 +5,7 @@ persona, mirando la pantalla real.
 
 Uso (Windows, PowerShell):
 
-    $env:CENTUM_URL = "https://plataforma5.centum.com.ar:22480/CentumSuite/BL1/Interfaces/Login.aspx"
+    $env:CENTUM_URL = "https://plataforma5.centum.com.ar:22480/CentumSuite/BL1?dominio=DistribuidoraCampomarSA"
     $env:CENTUM_USUARIO = "tu_usuario"
     $env:CENTUM_CONTRASENA = "tu_contraseña"
     # Opcional: el combo "Sucursal" del login no es obligatorio en Centum.
