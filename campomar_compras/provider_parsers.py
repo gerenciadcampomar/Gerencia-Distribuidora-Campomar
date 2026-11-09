@@ -293,39 +293,65 @@ def parse_percepciones_dolz(pdf_path: Path) -> list[RegimenEspecial]:
     return percepciones
 
 
-BRONCO_LINEA_RE = re.compile(
-    # El código puede venir como letras+número ("STOP934") o número solo,
-    # a veces con un sufijo de marca pegado ("1401 JRG") -- confirmado
-    # con dos comprobantes de prueba reales distintos del mismo
-    # proveedor. Anclado al principio del renglón (MULTILINE) para que no
-    # agarre números sueltos del encabezado (ej. "COMPROBANTE 1-25548").
-    r"^(?P<codigo>[A-Z]{2,8}\d{2,6}|\d{2,8}(?:\s+JRG)?)\s*(?P<resto>.*?)\s+(?P<cantidad>\d+)\s+"
-    r"\$\s*(?P<precio>[\d.]+,\d{2})\s+\$\s*(?P<total>[\d.]+,\d{2})",
-    re.DOTALL | re.MULTILINE,
-)
+# Autopartes Bronco manda un comprobante "así nomás" (sin CUIT, sin
+# Subtotal/IVA/Total) en una tabla con bordes reales. Se abandonó leerlo
+# como texto plano con regex: confirmado con dos comprobantes de prueba
+# reales que, según el programa de origen (Excel vs Word) y el ancho de
+# columna, pdfplumber puede devolver el texto con los caracteres de
+# columnas distintas ENTRELAZADOS letra por letra (irrecuperable, no es
+# un problema de regex) o, con columnas angostas, cortando el contenido
+# de una celda en varios renglones -- incluso en medio de un número
+# ("10.665,0" en un renglón, "0" en el siguiente). Extrayendo por CELDA
+# (pdfplumber extract_table(), que respeta los bordes reales de la
+# tabla) se evita el primer problema, y el segundo se resuelve uniendo
+# los saltos de línea de cada celda.
+BRONCO_ENCABEZADO_PREFIJOS = ("artícul", "articul", "codigo", "código")
+
+
+def _unir_celda_bronco(valor: str | None) -> str:
+    """Saca los saltos de línea dentro de una celda sin partir un número:
+    si el salto está entre dos dígitos (ej. "10.665,0\\n0") se saca sin
+    dejar espacio; en cualquier otro caso se reemplaza por un espacio."""
+    if not valor:
+        return ""
+    texto = re.sub(r"(?<=\d)\n(?=\d)", "", valor)
+    texto = re.sub(r"\s+", " ", texto)
+    return texto.strip()
+
+
+def _extraer_filas_tabla(pdf_path: Path) -> list[list[str]]:
+    import pdfplumber  # import diferido: sólo hace falta para leer PDFs reales
+
+    filas: list[list[str]] = []
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            tabla = page.extract_table()
+            if tabla:
+                filas.extend(tabla)
+    return filas
 
 
 def parse_lineas_bronco(pdf_path: Path) -> list[InvoiceLine]:
-    """Autopartes Bronco manda un comprobante "así nomás" (sin CUIT, sin
-    Subtotal/IVA/Total) con una tabla simple Artículo/Descripción/
-    Cantidad/Precio unitario/Precio total. Cuando la descripción es larga,
-    el PDF la corta en dos líneas (el código queda solo en su renglón) --
-    por eso el regex usa DOTALL y busca desde cada código hasta el primer
-    "cantidad $ precio $ total" que aparece después, sin importar los
-    saltos de línea en el medio. Confirmado contra el texto real del PDF
-    de prueba, incluida una línea (RET408) con un número suelto pegado al
-    final de la descripción que no es la cantidad."""
-    texto = extraer_texto(pdf_path)
     lineas = []
-    for m in BRONCO_LINEA_RE.finditer(texto):
-        descripcion = re.sub(r"\s+", " ", m.group("resto")).strip()
+    for fila in _extraer_filas_tabla(pdf_path):
+        if len(fila) < 5:
+            continue
+        codigo = _unir_celda_bronco(fila[0])
+        if not codigo or codigo.lower().startswith(BRONCO_ENCABEZADO_PREFIJOS):
+            continue  # fila vacía o encabezado de la tabla
+        cantidad_txt = _unir_celda_bronco(fila[2])
+        if not cantidad_txt or not cantidad_txt[0].isdigit():
+            continue
+        descripcion = _unir_celda_bronco(fila[1])
+        precio_txt = _unir_celda_bronco(fila[3]).lstrip("$ ").strip()
+        total_txt = _unir_celda_bronco(fila[4]).lstrip("$ ").strip()
         lineas.append(
             InvoiceLine(
-                codigo_proveedor=m.group("codigo").strip(),
+                codigo_proveedor=codigo,
                 descripcion=descripcion,
-                cantidad=_num_eu(m.group("cantidad")),
-                precio_unitario=_num_eu(m.group("precio")),
-                subtotal=_num_eu(m.group("total")),
+                cantidad=_num_eu(cantidad_txt),
+                precio_unitario=_num_eu(precio_txt),
+                subtotal=_num_eu(total_txt),
             )
         )
     return lineas
