@@ -11,8 +11,14 @@ from __future__ import annotations
 from campomar_compras.matcher import subtotal_propuesto
 from campomar_compras.models import InvoiceTotals, MatchResult, ValidationResult
 
-TOLERANCIA_PESOS_MINIMA = 1.0  # piso para facturas chicas
-TOLERANCIA_PESOS_POR_LINEA = 0.005  # cada línea redondea a centavos (medio centavo de margen por línea)
+TOLERANCIA_PESOS_SILENCIOSA = 1.0  # hasta acá, ni se menciona la diferencia
+TOLERANCIA_PORCENTAJE = 0.005  # 0,5% -- a partir de acá, NO coincide
+# Confirmado con el usuario: entre $1 y 0,5% puede pasar perfecto (ej. Centum
+# calculando descuentos con un redondeo propio que no es exactamente el %
+# nominal -- un 20% nominal que en la práctica sale ~20,08% -- generó una
+# diferencia real de ~$163 en una factura de ~$184.000, dentro de lo
+# tolerable), pero el mensaje siempre tiene que aclarar cuánto es esa
+# diferencia a partir de $1, no solo decir "OK" sin más.
 
 
 def validar_subtotal(
@@ -20,15 +26,17 @@ def validar_subtotal(
     totales_factura: InvoiceTotals,
     tolerancia: float | None = None,
 ) -> ValidationResult:
-    """tolerancia: si no se pasa, se calcula sola como el máximo entre un
-    piso fijo y el redondeo esperado por línea -- confirmado con una
-    factura real de 388 líneas que el redondeo de a centavos por línea
-    puede acumular más de $1 de diferencia sin que sea un error real."""
+    """tolerancia: el límite de NO-coincide (más allá de esto, falla). Si
+    no se pasa, se calcula sola como el máximo entre un piso fijo ($1,
+    para facturas chicas) y el 0,5% del subtotal facturado."""
     if tolerancia is None:
-        tolerancia = max(TOLERANCIA_PESOS_MINIMA, TOLERANCIA_PESOS_POR_LINEA * len(resultados))
+        tolerancia = max(TOLERANCIA_PESOS_SILENCIOSA, TOLERANCIA_PORCENTAJE * totales_factura.subtotal_neto)
 
     subtotal_sistema = subtotal_propuesto(resultados)
     diferencia = round(subtotal_sistema - totales_factura.subtotal_neto, 2)
+    porcentaje_diferencia = (
+        abs(diferencia) / totales_factura.subtotal_neto * 100 if totales_factura.subtotal_neto else 0.0
+    )
 
     # Confirmado con error real: si el parser no extrajo ninguna línea de
     # la factura (subtotal_neto=0) y el remito entero queda como
@@ -62,12 +70,21 @@ def validar_subtotal(
         )
 
     if abs(diferencia) <= tolerancia:
+        if abs(diferencia) <= TOLERANCIA_PESOS_SILENCIOSA:
+            # Hasta $1 de diferencia, ni se menciona -- confirmado con el
+            # usuario, no hace falta aclarar nada para algo así de chico.
+            detalle = "Coincide: se puede guardar en Centum."
+        else:
+            detalle = (
+                "Coincide dentro de la tolerancia: se puede guardar en Centum. "
+                f"(No cierra por ${abs(diferencia):.2f}, {porcentaje_diferencia:.2f}%.)"
+            )
         return ValidationResult(
             ok=True,
             subtotal_sistema=subtotal_sistema,
             subtotal_factura=totales_factura.subtotal_neto,
             diferencia=diferencia,
-            detalle="Coincide dentro de la tolerancia: se puede guardar en Centum.",
+            detalle=detalle,
         )
 
     return ValidationResult(
@@ -76,7 +93,8 @@ def validar_subtotal(
         subtotal_factura=totales_factura.subtotal_neto,
         diferencia=diferencia,
         detalle=(
-            "NO coincide: revisar antes de guardar. Diferencia de "
-            f"${diferencia:.2f} (sistema {'excede' if diferencia > 0 else 'falta'})."
+            "NO coincide: revisar antes de guardar. No cierra por "
+            f"${abs(diferencia):.2f} ({porcentaje_diferencia:.2f}%, sistema "
+            f"{'excede' if diferencia > 0 else 'falta'})."
         ),
     )

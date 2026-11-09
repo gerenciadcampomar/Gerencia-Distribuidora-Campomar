@@ -10,7 +10,9 @@ def _mapping(tmp_path) -> CodeMappingStore:
     return store
 
 
-def test_validacion_ok_dentro_de_tolerancia(tmp_path):
+def test_validacion_ok_diferencia_chica_no_se_menciona(tmp_path):
+    # Pedido del usuario: hasta $1 de diferencia, el mensaje no tiene que
+    # aclarar nada -- es tan chico que no vale la pena mencionarlo.
     remitos = [RemitoArticleLine("RERNMI37A859", "Regulador", "r1", 1, 100.0)]
     facturas = [InvoiceLine("RNMI 37A859", "Regulador", 1, 100.5)]
     resultados = match_remitos_contra_factura(remitos, facturas, _mapping(tmp_path))
@@ -18,6 +20,36 @@ def test_validacion_ok_dentro_de_tolerancia(tmp_path):
     totales = InvoiceTotals(subtotal_neto=100.5)
     resultado = validar_subtotal(resultados, totales, tolerancia=1.0)
     assert resultado.ok
+    assert "$" not in resultado.detalle
+
+
+def test_validacion_ok_diferencia_mayor_a_un_peso_se_aclara(tmp_path):
+    # Pedido del usuario: más de $1 (pero dentro de tolerancia), el
+    # mensaje tiene que decir OK pero aclarando cuánto no cierra.
+    remitos = [RemitoArticleLine("RERNMI37A859", "Regulador", "r1", 1, 100.0)]
+    facturas = [InvoiceLine("RNMI 37A859", "Regulador", 1, 102.0)]
+    resultados = match_remitos_contra_factura(remitos, facturas, _mapping(tmp_path))
+
+    totales = InvoiceTotals(subtotal_neto=102.0)
+    resultado = validar_subtotal(resultados, totales, tolerancia=5.0)
+    assert resultado.ok
+    assert "$2.00" in resultado.detalle
+
+
+def test_tolerancia_por_porcentaje_cubre_redondeo_de_centum(tmp_path):
+    # Caso real reportado: Centum calcula descuentos con un redondeo
+    # propio (un 20% nominal que en la práctica da ~20,08%), generando
+    # una diferencia chica pero real en facturas grandes -- no es un
+    # error de verdad. La tolerancia por peso fijo no alcanzaba para una
+    # factura de ~$184.000 con ~$164 de diferencia (0,09%).
+    remitos = [RemitoArticleLine("RERNMI37A859", "Regulador", "r1", 1, 184426.63)]
+    facturas = [InvoiceLine("RNMI 37A859", "Regulador", 1, 184590.58)]
+    resultados = match_remitos_contra_factura(remitos, facturas, _mapping(tmp_path))
+
+    totales = InvoiceTotals(subtotal_neto=184590.58)
+    resultado = validar_subtotal(resultados, totales)  # tolerancia automática
+    assert resultado.ok
+    assert "0.09%" in resultado.detalle or "0.08%" in resultado.detalle
 
 
 def test_validacion_falla_fuera_de_tolerancia(tmp_path):
