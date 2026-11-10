@@ -20,6 +20,7 @@ completo.
 from __future__ import annotations
 
 import argparse
+import datetime
 import os
 import shutil
 import time
@@ -498,31 +499,71 @@ def correr_watcher(
             return
 
         if modo == "solo-validar":
-            if not factura_pdf:
-                raise SystemExit("Pasá --factura-pdf con la ruta del PDF de la factura real para --modo solo-validar.")
-            reporte = procesar_factura(
-                Path(factura_pdf),
-                client,
-                carpetas,
-                tipo_comprobante=tipo_comprobante or "Factura de Compras",
-                punto_venta=punto_venta,
-                numero=numero,
-            )
-            print(reporte)
-            print(
-                "Dejo el navegador abierto hasta que vos lo cierres (sin límite de "
-                "tiempo). NUNCA guarda solo -- revisalo, guardalo a mano si está OK, "
-                "y cerrá la ventana del navegador cuando termines."
-            )
-            # Sin timeout: espera indefinidamente a que la persona cierre la
-            # pestaña/el navegador. Un timeout fijo (ej. 60s) no tiene
-            # sentido acá -- nadie puede revisar y guardar en Centum en 60
-            # segundos siempre, y esto corre sin que haya alguien mirando
-            # el reloj.
-            try:
-                page.wait_for_event("close", timeout=0)
-            except Exception:  # noqa: BLE001 - si el navegador ya se cerró de otra forma, no importa
-                pass
+            if factura_pdf:
+                pdfs_a_procesar = [(Path(factura_pdf), punto_venta, numero)]
+            else:
+                # No hace falta escribir ni renombrar nada: toma todos los
+                # PDFs que haya en facturas_pendientes y los procesa de a
+                # uno, en orden de la FECHA DE LA FACTURA (no del nombre
+                # del archivo) -- pedido del usuario, para suscribirlos en
+                # el orden real en que se facturaron. punto_venta/numero
+                # quedan sin pasar en este caso (hay que completarlos a
+                # mano en Centum para cada una), ya que son datos propios
+                # de cada factura distinta.
+                pendientes = sorted(carpetas.pendientes.glob("*.pdf"))
+                if not pendientes:
+                    raise SystemExit(
+                        f"No hay ningún PDF en {carpetas.pendientes} y no pasaste --factura-pdf. "
+                        "Poné la factura ahí (con el nombre que tenga) o pasá la ruta con --factura-pdf."
+                    )
+
+                def _fecha_para_orden(p: Path) -> datetime.date:
+                    try:
+                        return extraer_fecha_factura(p) or datetime.date.max
+                    except Exception:  # noqa: BLE001 - si no se puede leer, va al final
+                        return datetime.date.max
+
+                pendientes.sort(key=_fecha_para_orden)
+                pdfs_a_procesar = [(p, None, None) for p in pendientes]
+                if len(pdfs_a_procesar) > 1:
+                    print(f"Encontré {len(pdfs_a_procesar)} PDFs pendientes, los proceso en orden de fecha de factura:")
+                    for p, _, _ in pdfs_a_procesar:
+                        print(f"  - {p.name}")
+
+            pagina_actual = page
+            client_actual = client
+            for i, (pdf_path, pv, num) in enumerate(pdfs_a_procesar):
+                if i > 0:
+                    # Pestaña nueva en el mismo contexto -- ya está
+                    # logueado (comparte cookies/sesión), no hace falta
+                    # volver a loguearse.
+                    pagina_actual = context.new_page()
+                    client_actual = CentumBrowserClient(pagina_actual, directorio_debug=carpetas.base / "debug")
+
+                print(f"Procesando {pdf_path.name}...")
+                reporte = procesar_factura(
+                    pdf_path,
+                    client_actual,
+                    carpetas,
+                    tipo_comprobante=tipo_comprobante or "Factura de Compras",
+                    punto_venta=pv,
+                    numero=num,
+                )
+                print(reporte)
+                print(
+                    "Dejo el navegador abierto hasta que vos lo cierres (sin límite de "
+                    "tiempo). NUNCA guarda solo -- revisalo, guardalo a mano si está OK, "
+                    "y cerrá la ventana del navegador cuando termines."
+                )
+                # Sin timeout: espera indefinidamente a que la persona
+                # cierre la pestaña/el navegador antes de seguir con la
+                # próxima factura (si hay más de una). Un timeout fijo no
+                # tiene sentido acá -- nadie puede revisar y guardar en
+                # Centum en 60 segundos siempre.
+                try:
+                    pagina_actual.wait_for_event("close", timeout=0)
+                except Exception:  # noqa: BLE001 - si ya se cerró de otra forma, no importa
+                    pass
             return
 
         print(f"Vigilando {carpetas.pendientes} cada {POLL_SEGUNDOS}s (Ctrl+C para cortar)...")
@@ -570,7 +611,13 @@ def main() -> None:
     parser.add_argument("--fecha-documento", help="DD/MM/AAAA, para --modo solo-remitos.")
     parser.add_argument("--punto-venta", help="Para --modo solo-remitos / solo-validar.")
     parser.add_argument("--numero", help="Para --modo solo-remitos / solo-validar.")
-    parser.add_argument("--factura-pdf", help="Ruta al PDF real de la factura, para --modo solo-validar.")
+    parser.add_argument(
+        "--factura-pdf",
+        help=(
+            "Ruta al PDF real de la factura, para --modo solo-validar. Si se omite, "
+            "usa el único PDF que haya en facturas_pendientes (o avisa si hay más de uno)."
+        ),
+    )
     parser.add_argument("--headless", action="store_true", help="Correr sin mostrar el navegador.")
     args = parser.parse_args()
     correr_watcher(
