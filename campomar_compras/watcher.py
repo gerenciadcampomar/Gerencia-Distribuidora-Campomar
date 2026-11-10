@@ -149,13 +149,23 @@ def procesar_factura(
     tipo_comprobante: str = "Factura de Compras",
     punto_venta: str | None = None,
     numero: str | None = None,
+    es_ultima_del_lote: bool = False,
 ) -> str:
     """Devuelve el texto del reporte generado para esta factura.
 
     OJO: punto_venta y numero todavía hay que pasarlos a mano (leídos del
     PDF por una persona) -- falta un extractor automático del número de
     comprobante (ej. "0015-00141664") para el modo completo. La fecha sí
-    se extrae sola del PDF."""
+    se extrae sola del PDF.
+
+    es_ultima_del_lote: confirmado con el usuario que un código remitido
+    de más (excedente, total o parcial) no es un problema de ESTA factura
+    -- se ajusta/elimina igual y "es problema del siguiente comprobante".
+    Pero si esta es la ÚLTIMA factura del lote que se está procesando, no
+    hay un "siguiente comprobante" en esta corrida que se haga cargo, así
+    que el reporte lo marca con una alerta aparte para que se revise (capaz
+    hay otra factura o un presupuesto del proveedor, todavía no cargado,
+    que lo cubre)."""
     slug = identificar_proveedor(pdf_path)
     if slug is None or slug not in PROVIDER_PARSERS:
         return (
@@ -349,6 +359,36 @@ def procesar_factura(
         )
         for regimen in regimenes_sin_traducir:
             lineas_reporte.append(f"  {regimen.jurisdiccion}: ${regimen.importe:,.2f}")
+
+    # Un excedente (total o parcial) no es problema de ESTA factura --
+    # confirmado con el usuario: se ajusta/elimina igual y queda pendiente
+    # para la próxima. Pero si esta es la ÚLTIMA factura del lote, no hay
+    # "próxima" en esta corrida que se haga cargo, así que se marca aparte
+    # para que se revise (puede haber otra factura o un presupuesto del
+    # proveedor, todavía no cargado, que sí lo cubra).
+    if es_ultima_del_lote and (excedentes or excedentes_parciales):
+        lineas_reporte.append("")
+        lineas_reporte.append(
+            ">>> ÚLTIMA FACTURA DEL LOTE: esto quedó pendiente de suscribir y "
+            "NINGUNA otra factura de esta corrida lo va a cubrir -- si no esperás "
+            "otra factura o un presupuesto del proveedor que lo incluya, revisalo: <<<"
+        )
+        for r in excedentes:
+            for remito_line in r.remito_lines:
+                lineas_reporte.append(
+                    f"  {remito_line.codigo_articulo}: {remito_line.cantidad} eliminado de esta compra"
+                )
+        for r in excedentes_parciales:
+            codigo = r.remito_lines[0].codigo_articulo
+            lineas_reporte.append(f"  {codigo}: {r.cantidad_diferencia} quedó pendiente")
+        notificar_usuario(
+            f"Quedó pendiente de suscribir ({slug})",
+            f"Comprobante {numero_comprobante}: es la última factura de esta tanda, "
+            "y quedaron artículos remitidos de más que ninguna otra factura de esta "
+            "corrida va a cubrir. Revisá el reporte antes de dar por cerrado el "
+            "proveedor.",
+        )
+
     lineas_reporte += [
         "",
         f"Subtotal sistema: ${validacion.subtotal_sistema:,.2f}",
@@ -579,6 +619,7 @@ def correr_watcher(
                     tipo_comprobante=tipo_comprobante or "Factura de Compras",
                     punto_venta=pv,
                     numero=num,
+                    es_ultima_del_lote=(i == len(pdfs_a_procesar) - 1),
                 )
                 print(reporte)
                 print(

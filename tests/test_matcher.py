@@ -183,6 +183,31 @@ def test_dos_lineas_de_factura_con_mismo_codigo_se_fusionan(tmp_path):
     assert resultados[0].invoice_line.cantidad == 52
 
 
+def test_remito_con_dos_renglones_resuelve_subconjunto_exacto(tmp_path):
+    # Bug real MD: al traer remitos de una ventana de días que agrupa dos
+    # facturas casi simultáneas (991 y 992), el código 15003 llegó con DOS
+    # renglones (52 + 52 = 104) -- antes, como el total (104) no coincidía
+    # con lo facturado en ESTA factura (52), se mandaba todo a revisión
+    # manual. Ahora se busca un subconjunto exacto: uno de los dos
+    # renglones (52) matchea solo, así que ese es el de esta factura y el
+    # otro queda para la próxima (se elimina de esta, como un excedente
+    # normal -- confirmado con el usuario: "es problema del siguiente
+    # comprobante").
+    remitos = [
+        RemitoArticleLine("MD15003/1", "Bulbo", "r1", 52, 4837.78, codigo_propio_proveedor="15003"),
+        RemitoArticleLine("MD15003/1", "Bulbo", "r2", 52, 4837.78, codigo_propio_proveedor="15003"),
+    ]
+    facturas = [InvoiceLine("15003", "Bulbo", 52, 4837.78)]
+
+    resultados = match_remitos_contra_factura(remitos, facturas, _mapping(tmp_path))
+    assert len(resultados) == 2
+    por_status = {r.status: r for r in resultados}
+    assert MatchStatus.OK in por_status
+    assert por_status[MatchStatus.OK].remito_lines[0].numero_remito == "r1"
+    assert MatchStatus.EXCEDENTE in por_status
+    assert por_status[MatchStatus.EXCEDENTE].remito_lines[0].numero_remito == "r2"
+
+
 def test_subtotal_propuesto_suma_ok_y_faltantes(tmp_path):
     remitos = [RemitoArticleLine("Z837", "Impulsor", "r1", 1, 100.0)]
     facturas = [
