@@ -585,12 +585,17 @@ class CentumBrowserClient:
         codigo_articulo: str,
         nueva_cantidad: float,
         codigo_propio_proveedor: str = "",
-    ) -> None:
+    ) -> bool:
         """Para un excedente parcial (mismo código que la factura, pero el
         remito trae más cantidad que lo facturado): baja la cantidad del
         artículo a lo facturado, dejando el resto pendiente de suscribir
         para otra factura del proveedor -- mismo efecto que el tachito,
         pero parcial.
+
+        Devuelve True si se verificó que el valor quedó bien, False si se
+        agotaron los reintentos y el ajuste puede no haberse aplicado en
+        pantalla -- el llamador (ver watcher.py) lo necesita para no
+        reportar "ajustado" cuando en realidad no se pudo confirmar.
 
         Confirmado con el usuario viendo la pantalla real: la columna
         "Cantidad" (sin más) queda gris, no editable -- el campo que
@@ -630,14 +635,15 @@ class CentumBrowserClient:
                 campo.press("Tab")
                 self.page.wait_for_timeout(1000)
                 if campo.input_value().strip() == objetivo:
-                    return
+                    return True
             print(
                 f"[aviso] La cantidad de {codigo_articulo} no quedó en {objetivo} "
                 f"(quedó en '{campo.input_value()}') -- revisala y corregila a mano "
                 "en Centum antes de guardar."
             )
+            return False
 
-        self._paso(f"ajustar_cantidad_{codigo_articulo}", accion)
+        return self._paso(f"ajustar_cantidad_{codigo_articulo}", accion)
 
     def eliminar_articulos_marcados(self) -> None:
         """Saca del comprobante actual todos los artículos tildados con

@@ -32,6 +32,7 @@ from playwright.sync_api import sync_playwright
 from campomar_compras.centum_browser_client import CentumBrowserClient, CentumCredenciales, PasoCentumError
 from campomar_compras.code_mapping import CodeMappingStore
 from campomar_compras.matcher import match_remitos_contra_factura, proponer_conceptos_faltantes
+from campomar_compras.models import MatchResult
 from campomar_compras.provider_identificacion import (
     cuit_proveedor,
     extraer_fecha_factura,
@@ -264,15 +265,18 @@ def procesar_factura(
             client.marcar_regimen_especial(etiqueta, regimen.importe)
         client.confirmar_regimenes_especiales()
 
+    ajustes_no_verificados: list[MatchResult] = []
     for r in excedentes_parciales:
         if len(r.remito_lines) == 1:
             remito_line = r.remito_lines[0]
-            client.ajustar_cantidad_excedente_parcial(
+            verificado = client.ajustar_cantidad_excedente_parcial(
                 remito_line.numero_remito,
                 remito_line.codigo_articulo,
                 r.invoice_line.cantidad,
                 remito_line.codigo_propio_proveedor,
             )
+            if not verificado:
+                ajustes_no_verificados.append(r)
 
     if fecha_documento:
         # El usuario notó que "Fecha Documento" puede quedar pisada con
@@ -329,8 +333,9 @@ def procesar_factura(
         lineas_reporte.append("Cantidad ajustada (el proveedor entregó de más que lo facturado):")
         for r in excedentes_parciales_ajustados:
             codigo = r.remito_lines[0].codigo_articulo
+            aviso = "  >>> NO SE PUDO VERIFICAR, revisalo a mano <<<" if r in ajustes_no_verificados else ""
             lineas_reporte.append(
-                f"  {codigo}: sobraban {r.cantidad_diferencia}, quedó en {r.invoice_line.cantidad}"
+                f"  {codigo}: sobraban {r.cantidad_diferencia}, quedó en {r.invoice_line.cantidad}{aviso}"
             )
     if excedentes_parciales_sin_ajustar:
         lineas_reporte.append("")
@@ -388,6 +393,39 @@ def procesar_factura(
             "corrida va a cubrir. Revisá el reporte antes de dar por cerrado el "
             "proveedor.",
         )
+
+    # "Marcar las diferencias" -- pedido del usuario para saber de dónde
+    # sale la diferencia entre el subtotal del sistema y el de la
+    # factura, en vez de solo un número agregado al final. Estimación por
+    # código de cuánto de más (o de menos) queda en el sistema respecto
+    # de lo facturado, para los casos que el matcher ya sabe que no
+    # cierran solos.
+    impactos: list[tuple[str, float, str]] = []
+    for r in resultados:
+        if r.status.value == "precio_difiere":
+            codigo = r.remito_lines[0].codigo_articulo
+            subtotal_remito = sum(linea.subtotal for linea in r.remito_lines)
+            impacto = round(subtotal_remito - r.invoice_line.subtotal, 2)
+            impactos.append((codigo, impacto, "precio distinto"))
+    for r in excedentes_parciales_sin_ajustar:
+        codigo = r.remito_lines[0].codigo_articulo
+        cantidad_remito = sum(linea.cantidad for linea in r.remito_lines)
+        precio_neto = sum(linea.subtotal for linea in r.remito_lines) / cantidad_remito if cantidad_remito else 0.0
+        impacto = round(r.cantidad_diferencia * precio_neto, 2)
+        impactos.append((codigo, impacto, "sin ajustar, sobra cantidad entre varios renglones"))
+    for r in ajustes_no_verificados:
+        codigo = r.remito_lines[0].codigo_articulo
+        cantidad_remito = sum(linea.cantidad for linea in r.remito_lines)
+        precio_neto = sum(linea.subtotal for linea in r.remito_lines) / cantidad_remito if cantidad_remito else 0.0
+        impacto = round(r.cantidad_diferencia * precio_neto, 2)
+        impactos.append((codigo, impacto, "ajuste de cantidad no se pudo verificar"))
+    if impactos:
+        impactos.sort(key=lambda t: abs(t[1]), reverse=True)
+        lineas_reporte.append("")
+        lineas_reporte.append("Diferencias que explican el subtotal (de mayor a menor):")
+        for codigo, impacto, motivo in impactos:
+            signo = "sistema de más" if impacto > 0 else "sistema de menos"
+            lineas_reporte.append(f"  {codigo}: ${abs(impacto):,.2f} ({signo}, {motivo})")
 
     lineas_reporte += [
         "",
