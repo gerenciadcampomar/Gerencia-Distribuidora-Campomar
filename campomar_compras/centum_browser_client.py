@@ -17,6 +17,7 @@ de depuración si falla (ver `directorio_debug`).
 from __future__ import annotations
 
 import datetime
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -545,23 +546,45 @@ class CentumBrowserClient:
 
         return self._paso("leer_articulos_cargados", accion)
 
-    def marcar_articulo_para_eliminar(self, numero_remito: str, codigo_articulo: str) -> None:
+    def marcar_articulo_para_eliminar(
+        self, numero_remito: str, codigo_articulo: str, codigo_propio_proveedor: str = ""
+    ) -> None:
         """Tilda un artículo excedente para sacarlo del comprobante actual
         (queda sin suscribir, se puede traer en uno siguiente). Confirmado
         con el usuario: acá "tildar" es al revés de lo que se podría
         suponer -- significa marcar PARA ELIMINAR, no para incluir. Hay
         que tildar todos los excedentes y recién al final llamar a
         eliminar_articulos_marcados() una sola vez (no un click de
-        eliminar por artículo)."""
+        eliminar por artículo).
+
+        `codigo_propio_proveedor`, si se pasa, se suma como filtro extra
+        -- confirmado con error real (MD): más de un renglón del remito
+        puede compartir el mismo Código Artículo de Centum (ej. "MD17001"
+        para "17001" y "17001 I", dos variantes distintas del proveedor),
+        y buscar solo por Código Artículo tira un error de ambigüedad."""
 
         def accion():
             fila = self.page.locator("tr", has_text=codigo_articulo).filter(has_text=numero_remito)
+            if codigo_propio_proveedor:
+                # has_text busca substring en TODO el texto de la fila --
+                # no alcanza para distinguir "17001" de "17001 I" (uno es
+                # substring del otro). Se exige que haya una celda cuyo
+                # texto sea EXACTO (con los espacios recortados).
+                fila = fila.filter(
+                    has=self.page.locator(
+                        "td", has_text=re.compile(rf"^\s*{re.escape(codigo_propio_proveedor)}\s*$")
+                    )
+                )
             fila.locator("input[type=checkbox]").first.check()
 
         self._paso(f"marcar_para_eliminar_{codigo_articulo}", accion)
 
     def ajustar_cantidad_excedente_parcial(
-        self, numero_remito: str, codigo_articulo: str, nueva_cantidad: float
+        self,
+        numero_remito: str,
+        codigo_articulo: str,
+        nueva_cantidad: float,
+        codigo_propio_proveedor: str = "",
     ) -> None:
         """Para un excedente parcial (mismo código que la factura, pero el
         remito trae más cantidad que lo facturado): baja la cantidad del
@@ -578,6 +601,10 @@ class CentumBrowserClient:
         así que se busca por el prefijo fijo dentro de la fila, igual que
         con los demás campos con GUID de esta sesión.
 
+        `codigo_propio_proveedor`, si se pasa, se suma como filtro extra
+        por el mismo motivo que en marcar_articulo_para_eliminar (más de
+        un renglón puede compartir el mismo Código Artículo).
+
         Confirmado con error real: un solo fill() no alcanza -- el script
         reporta éxito pero en pantalla el valor queda sin cambiar, mismo
         patrón que Fecha Documento (algún paso posterior lo pisa). Por
@@ -586,6 +613,14 @@ class CentumBrowserClient:
 
         def accion():
             fila = self.page.locator("tr", has_text=codigo_articulo).filter(has_text=numero_remito)
+            if codigo_propio_proveedor:
+                # Mismo motivo que en marcar_articulo_para_eliminar: exige
+                # una celda con texto EXACTO, no un substring de la fila.
+                fila = fila.filter(
+                    has=self.page.locator(
+                        "td", has_text=re.compile(rf"^\s*{re.escape(codigo_propio_proveedor)}\s*$")
+                    )
+                )
             campo = fila.locator(
                 "input[id^='txtRemitoCompraArticuloSuscriptoCantidadUnidadNivel_']"
             )

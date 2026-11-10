@@ -206,7 +206,9 @@ def procesar_factura(
         # Un código puede venir repetido en más de un renglón del remito
         # (ver matcher.py) -- si está excedente, se elimina cada renglón.
         for remito_line in r.remito_lines:
-            client.marcar_articulo_para_eliminar(remito_line.numero_remito, remito_line.codigo_articulo)
+            client.marcar_articulo_para_eliminar(
+                remito_line.numero_remito, remito_line.codigo_articulo, remito_line.codigo_propio_proveedor
+            )
     if excedentes:
         client.eliminar_articulos_marcados()
 
@@ -256,7 +258,10 @@ def procesar_factura(
         if len(r.remito_lines) == 1:
             remito_line = r.remito_lines[0]
             client.ajustar_cantidad_excedente_parcial(
-                remito_line.numero_remito, remito_line.codigo_articulo, r.invoice_line.cantidad
+                remito_line.numero_remito,
+                remito_line.codigo_articulo,
+                r.invoice_line.cantidad,
+                remito_line.codigo_propio_proveedor,
             )
 
     if fecha_documento:
@@ -502,7 +507,9 @@ def correr_watcher(
                 raise SystemExit("No se cargó ningún artículo, no hay nada para eliminar de prueba.")
             primero = articulos[0]
             print(f"Voy a marcar para eliminar (solo de prueba): {primero}")
-            client.marcar_articulo_para_eliminar(primero.numero_remito, primero.codigo_articulo)
+            client.marcar_articulo_para_eliminar(
+                primero.numero_remito, primero.codigo_articulo, primero.codigo_propio_proveedor
+            )
             client.eliminar_articulos_marcados()
             print("eliminar_articulos_marcados OK (sin error). Dejo el navegador abierto 30s para que confirmes visualmente.")
             time.sleep(30)
