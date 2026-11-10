@@ -6,6 +6,8 @@ from campomar_compras.provider_parsers import (
     DOLZ_PERCEPCION_RE,
     DOLZ_SUBTOTAL_RE,
     DOLZ_TOTAL_RE,
+    MD_LINE_RE,
+    MD_TOTALES_RE,
     NOSSO_ALICUOTA_RE,
     NOSSO_LINE_RE,
     RALUX_LINE_RE,
@@ -13,11 +15,14 @@ from campomar_compras.provider_parsers import (
     RALUX_SUBTOTAL_RE,
     RALUX_TOTAL_RE,
     _num_eu,
+    _num_md,
     _num_us,
     _sin_duplicado,
     _unir_celda_bronco,
     parse_lineas_bronco,
+    parse_lineas_md,
     parse_totales_bronco,
+    parse_totales_md,
     regla_codigo_ralux,
 )
 
@@ -197,3 +202,82 @@ def test_bronco_totales_sin_subtotal_explicito(tmp_path, monkeypatch):
     assert totales.subtotal_neto == 35396.05
     assert totales.iva == 0.0
     assert totales.total == 35396.05
+
+
+# --- MD (Montpres S.A.) -------------------------------------------------
+# Texto real extraído con pdfplumber de una factura MD (comprobante
+# 00003-00013991) -- confirmado al centavo contra los 96 artículos y los
+# totales reales del PDF.
+
+
+def test_md_num_decide_separador_segun_lo_que_aparece():
+    # Cantidad y los números grandes del bloque de totales solo traen
+    # punto, que ahí ES el decimal (no hay miles) -- confirmado real que
+    # tratarlos como formato europeo (_num_eu, que siempre saca el punto)
+    # los multiplicaba por 100.
+    assert _num_md("5. 00") == 5.0
+    assert _num_md("11295671. 85") == 11295671.85
+    # Precio/importe con los dos separadores sí son formato europeo normal.
+    assert _num_md("11. 505, 49") == 11505.49
+    # Precio chico, solo coma.
+    assert _num_md("762, 90") == 762.90
+
+
+def test_md_linea_simple():
+    texto = "50. 00 15003/ 1 BULBO DE ELECTROVENT. 12. 070, 09 603. 504, 28"
+    m = next(MD_LINE_RE.finditer(texto))
+    assert _num_md(m.group("cantidad")) == 50.0
+    assert m.group("codigo") == "15003/ 1"
+    assert _num_md(m.group("precio")) == 12070.09
+    assert _num_md(m.group("importe")) == 603504.28
+
+
+def test_md_sufijo_de_letra_real_en_el_codigo():
+    # Confirmado real: "17001" y "17001 I" son dos artículos DISTINTOS,
+    # con precio distinto -- el sufijo "I" acá es parte real del código.
+    texto = "3. 00 17001 I SOLENOI DE 12V 24. 011, 10 72. 033, 29"
+    m = next(MD_LINE_RE.finditer(texto))
+    assert m.group("codigo") == "17001 I"
+
+
+def test_md_i_de_interruptor_no_es_sufijo_de_codigo():
+    # Bug real encontrado: el PDF separa a veces la primera letra de una
+    # palabra con un espacio de más (ej. "INT." -> "I NT."), que se podía
+    # confundir con un sufijo de código de una letra como el de 17001 I.
+    # Confirmado contra 32 casos reales: siempre que el patrón es
+    # "<código> I NT." es la palabra "INT." partida, nunca un sufijo real.
+    texto = "5. 00 14713 I NT. LUZ DE STOP 11. 505, 49 57. 527, 45"
+    m = next(MD_LINE_RE.finditer(texto))
+    assert m.group("codigo") == "14713"
+    assert m.group("descripcion") == "I NT. LUZ DE STOP"
+
+
+def test_md_totales_no_se_cuela_como_linea_de_articulo(tmp_path, monkeypatch):
+    # Bug real encontrado: la fila final de totales (mismo patrón de 5
+    # números en columna que una línea de artículo) se colaba como si
+    # fuera un artículo más -- ahora se recorta el texto antes de esa
+    # fila.
+    texto = (
+        "5. 00 14713 I NT. LUZ DE STOP 11. 505, 49 57. 527, 45\n"
+        "SON pesos :\n"
+        "11295671. 85 6822585. 80 4473086. 05 I VA 21, 0% 939. 348, 07\n"
+        "5412434. 12\n"
+    )
+    monkeypatch.setattr(provider_parsers, "extraer_texto", lambda pdf_path: texto)
+    lineas = parse_lineas_md(tmp_path / "md_prueba.pdf")
+    assert len(lineas) == 1
+    assert lineas[0].codigo_proveedor == "14713"
+
+
+def test_md_totales_reales(tmp_path, monkeypatch):
+    texto = (
+        "SON pesos : CINCO MILLONES CUATROCIENTOS DOCE MIL CUATROCIENTOS "
+        "TREINTA Y CUATRO CON 12/100\n"
+        "11295671. 85 6822585. 80 4473086. 05 I VA 21, 0% 939. 348, 07\n"
+        "5412434. 12\n"
+    )
+    monkeypatch.setattr(provider_parsers, "extraer_texto", lambda pdf_path: texto)
+    totales = parse_totales_md(tmp_path / "md_prueba.pdf")
+    assert totales.subtotal_neto == 4473086.05
+    assert totales.iva == 939348.07
+    assert totales.total == 5412434.12

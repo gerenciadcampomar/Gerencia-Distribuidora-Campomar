@@ -367,11 +367,103 @@ def parse_totales_bronco(pdf_path: Path) -> InvoiceTotals:
     return InvoiceTotals(subtotal_neto=subtotal, iva=0.0, total=subtotal)
 
 
+# --- MD (Montpres S.A.) ------------------------------------------------
+
+# Confirmado con error real: el PDF de MD tiene un problema de extracción
+# de texto distinto a los demás proveedores -- no corta celdas ni entrelaza
+# columnas, pero inserta un espacio de más justo después de cada "." o ","
+# que separa miles/decimales (ej. "11.505,49" se extrae como "11. 505, 49"),
+# y también separa a veces la primera letra de una palabra del resto (ej.
+# "INT." se extrae como "I NT."). _MD_NUM tolera el espacio de más dentro de
+# los números.
+_MD_NUM = r"\d+(?:\.\s?\d+)*(?:,\s?\d+)?"
+
+MD_LINE_RE = re.compile(
+    # El código puede traer un sufijo de una sola letra pegado con espacio
+    # (ej. "17001" y "17001 I" son dos artículos distintos, con precio
+    # distinto, confirmado real) -- pero ese mismo espacio de más también
+    # puede separar la "I" inicial de "INT." (interruptor) de la
+    # descripción, así que se excluye específicamente ese caso con el
+    # lookahead negativo, confirmado contra 32 casos reales de "I NT." que
+    # NO son un código con sufijo.
+    rf"^(?P<cantidad>{_MD_NUM})\s+(?P<codigo>{_MD_NUM}(?:/\s?\d+)?(?:\s+[A-Z]\b(?!\s*NT\.))?)\s+"
+    rf"(?P<descripcion>.+?)\s+(?P<precio>{_MD_NUM})\s+(?P<importe>{_MD_NUM})\s*$",
+    re.MULTILINE,
+)
+
+MD_TOTALES_RE = re.compile(
+    rf"(?P<subtotal_bruto>{_MD_NUM})\s+(?P<descuentos>{_MD_NUM})\s+(?P<subtotal_neto>{_MD_NUM})\s+"
+    rf"I\s*VA\s+(?P<alicuota>{_MD_NUM})\s*%\s+(?P<iva>{_MD_NUM})\s*\n\s*(?P<total>{_MD_NUM})",
+)
+
+
+def _num_md(raw: str) -> float:
+    """Saca los espacios de más (ver _MD_NUM) y decide el separador
+    decimal según cuáles aparecen -- confirmado con error real: no todos
+    los números del PDF de MD usan el mismo formato. Cantidad (ej.
+    "5.00") y los 4 números grandes del bloque de totales (ej.
+    "11295671.85") solo traen punto, que ahí ES el separador decimal (no
+    hay agrupación de miles) -- tratarlos como formato europeo (como hace
+    _num_eu, que siempre saca el punto) los multiplicaba por 100. Precio,
+    importe e IVA sí usan el formato europeo normal (punto de miles, coma
+    decimal) cuando aparecen ambos separadores, o solo coma decimal en
+    números chicos (ej. "762,90")."""
+    s = re.sub(r"\s+", "", raw)
+    if "," in s and "." in s:
+        return _num_eu(s)
+    if "," in s:
+        return float(s.replace(",", "."))
+    return float(s)
+
+
+def _limpiar_codigo_md(raw: str) -> str:
+    """Saca los espacios de más DENTRO del código (ej. "40265. 82 I" ->
+    "40265.82 I"), pero conserva el espacio antes de un sufijo de letra
+    real, que sí es parte del código."""
+    return re.sub(r"(?<=[\d/.,])\s+(?=[\d/.,])", "", raw).strip()
+
+
+def parse_lineas_md(pdf_path: Path) -> list[InvoiceLine]:
+    texto = extraer_texto(pdf_path)
+    # Recorta antes del bloque de totales del final -- confirmado con
+    # error real que, si no, esa fila (mismo patrón de 5 números en
+    # columna que una línea de artículo) se cuela como si fuera un
+    # artículo más.
+    m_totales = MD_TOTALES_RE.search(texto)
+    if m_totales:
+        texto = texto[: m_totales.start()]
+    lineas = []
+    for m in MD_LINE_RE.finditer(texto):
+        lineas.append(
+            InvoiceLine(
+                codigo_proveedor=_limpiar_codigo_md(m.group("codigo")),
+                descripcion=re.sub(r"\s+", " ", m.group("descripcion")).strip(),
+                cantidad=_num_md(m.group("cantidad")),
+                precio_unitario=_num_md(m.group("precio")),
+                subtotal=_num_md(m.group("importe")),
+            )
+        )
+    return lineas
+
+
+def parse_totales_md(pdf_path: Path) -> InvoiceTotals:
+    texto = extraer_texto(pdf_path)
+    m = MD_TOTALES_RE.search(texto)
+    if not m:
+        raise ValueError("No se pudo extraer el bloque de totales del PDF de MD.")
+    return InvoiceTotals(
+        subtotal_neto=_num_md(m.group("subtotal_neto")),
+        iva=_num_md(m.group("iva")),
+        total=_num_md(m.group("total")),
+    )
+
+
 PROVIDER_PARSERS = {
     "nosso": (parse_lineas_nosso, parse_totales_nosso),
     "ralux": (parse_lineas_ralux, parse_totales_ralux),
     "dolz": (parse_lineas_dolz, parse_totales_dolz),
     "bronco": (parse_lineas_bronco, parse_totales_bronco),
+    "md": (parse_lineas_md, parse_totales_md),
 }
 
 # No todos los proveedores tienen percepciones/regímenes especiales en su
