@@ -8,6 +8,7 @@ from campomar_compras.provider_parsers import (
     DOLZ_TOTAL_RE,
     MD_LINE_RE,
     MD_TOTALES_RE,
+    _normalizar_codigo_md,
     extraer_comprobante_md,
     extraer_fecha_md,
     NOSSO_ALICUOTA_RE,
@@ -252,6 +253,31 @@ def test_md_i_de_interruptor_no_es_sufijo_de_codigo():
     m = next(MD_LINE_RE.finditer(texto))
     assert m.group("codigo") == "14713"
     assert m.group("descripcion") == "I NT. LUZ DE STOP"
+
+
+def test_md_normaliza_codigos_con_variante_de_precio_conocida():
+    # Bug real: 15000-15004 y 15772 se facturan a veces con "/N" (lote más
+    # barato) y a veces sin barra, pero en Centum es el mismo "Código propio
+    # Proveedor" (confirmado real: SIEMPRE sin barra) -- si no se normaliza,
+    # el "/N" nunca matchea contra el remito y se carga como faltante
+    # aunque el artículo sí esté suscripto.
+    assert _normalizar_codigo_md("15003/1") == "15003"
+    assert _normalizar_codigo_md("15772/1") == "15772"
+
+
+def test_md_no_normaliza_codigos_con_barra_fuera_de_la_lista_conocida():
+    # Otros códigos con barra en la misma factura (ej. "24096/1") son
+    # artículos distintos de verdad, con su propio "Código propio
+    # Proveedor" con barra en Centum -- no hay que tocarlos.
+    assert _normalizar_codigo_md("24096/1") == "24096/1"
+
+
+def test_md_linea_con_variante_de_precio_se_parsea_con_codigo_normalizado(tmp_path, monkeypatch):
+    texto = "50. 00 15003/ 1 BULBO DE ELECTROVENT. 12. 070, 09 603. 504, 28\n"
+    monkeypatch.setattr(provider_parsers, "extraer_texto", lambda pdf_path: texto)
+    lineas = parse_lineas_md(tmp_path / "md_prueba.pdf")
+    assert len(lineas) == 1
+    assert lineas[0].codigo_proveedor == "15003"
 
 
 def test_md_totales_no_se_cuela_como_linea_de_articulo(tmp_path, monkeypatch):

@@ -159,6 +159,30 @@ def test_mismo_codigo_en_dos_renglones_del_remito_se_suma(tmp_path):
     assert len(resultados[0].remito_lines) == 2
 
 
+def test_dos_lineas_de_factura_con_mismo_codigo_se_fusionan(tmp_path):
+    # Bug real MD: los códigos 15000-15004/15772 se facturan en dos
+    # renglones separados (uno con "/N", lote más barato, y otro sin barra)
+    # pero en Centum comparten el mismo "Código propio Proveedor" -- el
+    # parser de MD ya normaliza el código (le saca la barra a estos
+    # puntuales), así que acá llegan dos InvoiceLine con el mismo código
+    # 15003 y precios distintos; antes de fusionar, la segunda quedaba sin
+    # match (ya "gastado" el primero) y se cargaba como FALTANTE espurio.
+    # Centum suscribe el remito a un único precio por renglón -- el que se
+    # compara acá es el precio PROMEDIO ponderado de las dos líneas de la
+    # factura (635774.02 / 52 = 12226.42), no el de ninguna de las dos por
+    # separado.
+    remitos = [RemitoArticleLine("MD15003/1", "Bulbo", "r1", 52, 12226.42, codigo_propio_proveedor="15003")]
+    facturas = [
+        InvoiceLine("15003", "Bulbo", 50, 12070.09),
+        InvoiceLine("15003", "Bulbo", 2, 16134.76),
+    ]
+
+    resultados = match_remitos_contra_factura(remitos, facturas, _mapping(tmp_path))
+    assert len(resultados) == 1
+    assert resultados[0].status == MatchStatus.OK
+    assert resultados[0].invoice_line.cantidad == 52
+
+
 def test_subtotal_propuesto_suma_ok_y_faltantes(tmp_path):
     remitos = [RemitoArticleLine("Z837", "Impulsor", "r1", 1, 100.0)]
     facturas = [

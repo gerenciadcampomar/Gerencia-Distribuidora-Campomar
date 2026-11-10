@@ -75,6 +75,26 @@ def _coincide_con_factura(representante: RemitoArticleLine, inv_line: InvoiceLin
     return mapping.get_centum_code(inv_line.codigo_proveedor) == representante.codigo_articulo
 
 
+def _fusionar_lineas_factura(lineas: list[InvoiceLine]) -> InvoiceLine:
+    """Combina varias líneas de factura que matchean el mismo código del
+    remito en una sola (sumando cantidad y subtotal). Normalmente una sola
+    línea de factura matchea por código, pero hay casos reales (ver MD,
+    códigos 15000-15004/15772) donde el mismo artículo aparece facturado dos
+    veces, a precios distintos, y Centum lo suscribe como un único artículo."""
+    if len(lineas) == 1:
+        return lineas[0]
+    cantidad = sum(linea.cantidad for linea in lineas)
+    subtotal = round(sum(linea.subtotal for linea in lineas), 2)
+    precio_unitario = round(subtotal / cantidad, 2) if cantidad else lineas[0].precio_unitario
+    return InvoiceLine(
+        codigo_proveedor=lineas[0].codigo_proveedor,
+        descripcion=lineas[0].descripcion,
+        cantidad=cantidad,
+        precio_unitario=precio_unitario,
+        subtotal=subtotal,
+    )
+
+
 def match_remitos_contra_factura(
     remito_lines: list[RemitoArticleLine],
     invoice_lines: list[InvoiceLine],
@@ -85,13 +105,11 @@ def match_remitos_contra_factura(
 
     for grupo in _agrupar_por_codigo(remito_lines):
         representante = grupo[0]
-        match_encontrado: InvoiceLine | None = None
-        for inv_line in invoice_restantes:
-            if _coincide_con_factura(representante, inv_line, mapping):
-                match_encontrado = inv_line
-                break
+        matches_encontrados = [
+            inv_line for inv_line in invoice_restantes if _coincide_con_factura(representante, inv_line, mapping)
+        ]
 
-        if match_encontrado is None:
+        if not matches_encontrados:
             resultados.append(
                 MatchResult(
                     status=MatchStatus.EXCEDENTE,
@@ -101,7 +119,9 @@ def match_remitos_contra_factura(
             )
             continue
 
-        invoice_restantes.remove(match_encontrado)
+        for inv_line in matches_encontrados:
+            invoice_restantes.remove(inv_line)
+        match_encontrado = _fusionar_lineas_factura(matches_encontrados)
 
         cantidad_remito = sum(linea.cantidad for linea in grupo)
         subtotal_remito = round(sum(linea.subtotal for linea in grupo), 2)

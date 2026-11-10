@@ -424,6 +424,25 @@ def _limpiar_codigo_md(raw: str) -> str:
     return re.sub(r"(?<=[\d/.,])\s+(?=[\d/.,])", "", raw).strip()
 
 
+# Confirmado real (capturas de pantalla de Centum + explicación directa del
+# usuario): para este conjunto puntual de códigos, el proveedor factura a
+# veces con sufijo "/N" (lote de origen más barato, precio distinto) y a
+# veces sin él -- pero en Centum es el MISMO artículo, con un único "Código
+# propio Proveedor" (siempre SIN la barra). Para cualquier otro código de MD
+# la barra sí es parte del código real (ej. otros artículos "/1" de la misma
+# factura que son productos distintos, con su propio "Código propio
+# Proveedor" con barra en Centum) -- por eso la normalización solo se aplica
+# a esta lista, nunca a todos los códigos con barra.
+MD_CODIGOS_CON_VARIANTE_DE_PRECIO = {"15000", "15001", "15002", "15003", "15004", "15772"}
+
+
+def _normalizar_codigo_md(codigo: str) -> str:
+    m = re.match(r"^(\d+)/\d+$", codigo)
+    if m and m.group(1) in MD_CODIGOS_CON_VARIANTE_DE_PRECIO:
+        return m.group(1)
+    return codigo
+
+
 def parse_lineas_md(pdf_path: Path) -> list[InvoiceLine]:
     texto = extraer_texto(pdf_path)
     # Recorta antes del bloque de totales del final -- confirmado con
@@ -437,7 +456,7 @@ def parse_lineas_md(pdf_path: Path) -> list[InvoiceLine]:
     for m in MD_LINE_RE.finditer(texto):
         lineas.append(
             InvoiceLine(
-                codigo_proveedor=_limpiar_codigo_md(m.group("codigo")),
+                codigo_proveedor=_normalizar_codigo_md(_limpiar_codigo_md(m.group("codigo"))),
                 descripcion=re.sub(r"\s+", " ", m.group("descripcion")).strip(),
                 cantidad=_num_md(m.group("cantidad")),
                 precio_unitario=_num_md(m.group("precio")),
