@@ -379,6 +379,11 @@ def parse_totales_bronco(pdf_path: Path) -> InvoiceTotals:
 # los números.
 _MD_NUM = r"\d+(?:\.\s?\d+)*(?:,\s?\d+)?"
 
+# Código alfanumérico (ej. "KIT3", confirmado real en la factura 992,
+# extraído como "KI T3" por el mismo problema de espacios de más) --
+# aparte de los códigos numéricos de siempre.
+_MD_CODIGO_ALFANUM = r"[A-Z]+(?:\s?[A-Z]+)*\d+"
+
 MD_LINE_RE = re.compile(
     # El código puede traer un sufijo de una sola letra pegado con espacio
     # (ej. "17001" y "17001 I" son dos artículos distintos, con precio
@@ -387,15 +392,41 @@ MD_LINE_RE = re.compile(
     # descripción, así que se excluye específicamente ese caso con el
     # lookahead negativo, confirmado contra 32 casos reales de "I NT." que
     # NO son un código con sufijo.
-    rf"^(?P<cantidad>{_MD_NUM})\s+(?P<codigo>{_MD_NUM}(?:/\s?\d+)?(?:\s+[A-Z]\b(?!\s*NT\.))?)\s+"
+    rf"^(?P<cantidad>{_MD_NUM})\s+"
+    rf"(?P<codigo>{_MD_NUM}(?:/\s?\d+)?(?:\s+[A-Z]\b(?!\s*NT\.))?|{_MD_CODIGO_ALFANUM})\s+"
     rf"(?P<descripcion>.+?)\s+(?P<precio>{_MD_NUM})\s+(?P<importe>{_MD_NUM})\s*$",
     re.MULTILINE,
 )
 
+# Bug real encontrado con la factura 992 (sin descuento general): cuando
+# no hay descuento, Centum imprime el mismo subtotal DOS veces ("1363024.
+# 38 1363024. 38 I VA...") en vez de las tres columnas de la 991 (bruto,
+# descuento, neto). Con un patrón que siempre exigía tres números, el
+# regex no encontraba un tercero pegado a "IVA" y retrocedía hasta la
+# frase en letras de la línea anterior ("...CON 50/1"), agarrando ese "1"
+# como si fuera el subtotal bruto -- bug real que multiplicaba todos los
+# precios por un factor disparatado (confirmado: ~1.345.134, el cociente
+# entre el verdadero subtotal y ese "1" espurio). Ahora el tercer número
+# es opcional y el ancla "^" (con re.MULTILINE) impide que el regex
+# cruce al texto de la línea anterior.
 MD_TOTALES_RE = re.compile(
-    rf"(?P<subtotal_bruto>{_MD_NUM})\s+(?P<descuentos>{_MD_NUM})\s+(?P<subtotal_neto>{_MD_NUM})\s+"
+    rf"^(?P<n1>{_MD_NUM})\s+(?P<n2>{_MD_NUM})\s+(?:(?P<n3>{_MD_NUM})\s+)?"
     rf"I\s*VA\s+(?P<alicuota>{_MD_NUM})\s*%\s+(?P<iva>{_MD_NUM})\s*\n\s*(?P<total>{_MD_NUM})",
+    re.MULTILINE,
 )
+
+
+def _bruto_y_neto_md(m: re.Match) -> tuple[float, float]:
+    """A partir de los 2 o 3 números que trae el bloque de totales (ver
+    MD_TOTALES_RE), devuelve (subtotal_bruto, subtotal_neto). Con los 3
+    números (hay descuento general) son el primero y el tercero; con solo
+    2 (no hay descuento) el subtotal es el mismo número repetido."""
+    n1 = _num_md(m.group("n1"))
+    n2 = _num_md(m.group("n2"))
+    n3 = m.group("n3")
+    if n3 is not None:
+        return n1, _num_md(n3)
+    return n1, n2
 
 
 def _num_md(raw: str) -> float:
@@ -420,7 +451,12 @@ def _num_md(raw: str) -> float:
 def _limpiar_codigo_md(raw: str) -> str:
     """Saca los espacios de más DENTRO del código (ej. "40265. 82 I" ->
     "40265.82 I"), pero conserva el espacio antes de un sufijo de letra
-    real, que sí es parte del código."""
+    real, que sí es parte del código -- excepto en un código alfanumérico
+    (ej. "KI T3" -> "KIT3", confirmado real), donde no hay ningún caso
+    conocido de espacio con significado real, así que se saca todo."""
+    raw = raw.strip()
+    if raw and raw[0].isalpha():
+        return re.sub(r"\s+", "", raw)
     return re.sub(r"(?<=[\d/.,])\s+(?=[\d/.,])", "", raw).strip()
 
 
@@ -463,8 +499,7 @@ def parse_lineas_md(pdf_path: Path) -> list[InvoiceLine]:
     # remito ya suscripto en Centum.
     fraccion_neta = 1.0
     if m_totales:
-        subtotal_bruto = _num_md(m_totales.group("subtotal_bruto"))
-        subtotal_neto = _num_md(m_totales.group("subtotal_neto"))
+        subtotal_bruto, subtotal_neto = _bruto_y_neto_md(m_totales)
         if subtotal_bruto:
             fraccion_neta = subtotal_neto / subtotal_bruto
         texto = texto[: m_totales.start()]
@@ -489,8 +524,9 @@ def parse_totales_md(pdf_path: Path) -> InvoiceTotals:
     m = MD_TOTALES_RE.search(texto)
     if not m:
         raise ValueError("No se pudo extraer el bloque de totales del PDF de MD.")
+    _subtotal_bruto, subtotal_neto = _bruto_y_neto_md(m)
     return InvoiceTotals(
-        subtotal_neto=_num_md(m.group("subtotal_neto")),
+        subtotal_neto=subtotal_neto,
         iva=_num_md(m.group("iva")),
         total=_num_md(m.group("total")),
     )

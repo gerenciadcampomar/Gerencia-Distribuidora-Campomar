@@ -280,6 +280,44 @@ def test_md_linea_con_variante_de_precio_se_parsea_con_codigo_normalizado(tmp_pa
     assert lineas[0].codigo_proveedor == "15003"
 
 
+def test_md_totales_sin_descuento_general(tmp_path, monkeypatch):
+    # Bug real encontrado con la factura 992 (sin descuento general):
+    # cuando no hay descuento, el bloque de totales imprime el mismo
+    # subtotal DOS veces ("1363024.38 1363024.38 I VA...") en vez de las
+    # tres columnas de una factura con descuento. El regex, al exigir
+    # siempre un tercer número pegado a "IVA", retrocedía hasta la frase
+    # en letras de la línea anterior ("...CON 50/1") y agarraba ese "1"
+    # como si fuera el subtotal bruto -- multiplicaba todos los precios
+    # por un factor disparatado (~1.345.134, confirmado real).
+    texto = (
+        "SON pesos : UN MILLÓN SEISCIENTOS CUARENTA Y NUEVE MIL DOSCIENTOS "
+        "CINCUENTA Y NUEVE CON 50/1\n"
+        "1363024. 38 1363024. 38 I VA 21, 0% 286. 235, 12\n"
+        "1649259. 50\n"
+    )
+    monkeypatch.setattr(provider_parsers, "extraer_texto", lambda pdf_path: texto)
+    totales = parse_totales_md(tmp_path / "md_prueba.pdf")
+    assert totales.subtotal_neto == 1363024.38
+    assert totales.iva == 286235.12
+    assert totales.total == 1649259.50
+
+
+def test_md_sin_descuento_general_no_altera_precios_de_linea(tmp_path, monkeypatch):
+    texto = (
+        "5. 00 KI T3 KI T TERMOSTATO 39. 001, 30 195. 006, 50\n"
+        "SON pesos : UN MILLÓN SEISCIENTOS CUARENTA Y NUEVE MIL DOSCIENTOS "
+        "CINCUENTA Y NUEVE CON 50/1\n"
+        "1363024. 38 1363024. 38 I VA 21, 0% 286. 235, 12\n"
+        "1649259. 50\n"
+    )
+    monkeypatch.setattr(provider_parsers, "extraer_texto", lambda pdf_path: texto)
+    lineas = parse_lineas_md(tmp_path / "md_prueba.pdf")
+    assert len(lineas) == 1
+    assert lineas[0].codigo_proveedor == "KIT3"
+    assert lineas[0].precio_unitario == 39001.30
+    assert lineas[0].subtotal == 195006.50
+
+
 def test_md_totales_no_se_cuela_como_linea_de_articulo(tmp_path, monkeypatch):
     # Bug real encontrado: la fila final de totales (mismo patrón de 5
     # números en columna que una línea de artículo) se colaba como si
