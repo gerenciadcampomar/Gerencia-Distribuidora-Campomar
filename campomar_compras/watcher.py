@@ -40,6 +40,7 @@ from campomar_compras.provider_identificacion import (
     nombre_centum,
 )
 from campomar_compras.provider_parsers import (
+    PROVIDER_COMPROBANTE_PARSERS,
     PROVIDER_FECHA_PARSERS,
     PROVIDER_PARSERS,
     PROVIDER_REGIMENES_PARSERS,
@@ -516,9 +517,9 @@ def correr_watcher(
                 # uno, en orden de la FECHA DE LA FACTURA (no del nombre
                 # del archivo) -- pedido del usuario, para suscribirlos en
                 # el orden real en que se facturaron. punto_venta/numero
-                # quedan sin pasar en este caso (hay que completarlos a
-                # mano en Centum para cada una), ya que son datos propios
-                # de cada factura distinta.
+                # se sacan solos del PDF para los proveedores que lo
+                # tengan calibrado (ver PROVIDER_COMPROBANTE_PARSERS); si
+                # no, quedan en blanco para completarlos a mano en Centum.
                 pendientes = sorted(carpetas.pendientes.glob("*.pdf"))
                 if not pendientes:
                     raise SystemExit(
@@ -535,7 +536,19 @@ def correr_watcher(
                         return datetime.date.max
 
                 pendientes.sort(key=_fecha_para_orden)
-                pdfs_a_procesar = [(p, None, None) for p in pendientes]
+
+                def _comprobante_para(p: Path) -> tuple[str | None, str | None]:
+                    try:
+                        slug_p = identificar_proveedor(p)
+                        extractor = PROVIDER_COMPROBANTE_PARSERS.get(slug_p)
+                        if extractor is None:
+                            return None, None
+                        resultado = extractor(p)
+                        return resultado if resultado else (None, None)
+                    except Exception:  # noqa: BLE001 - si no se puede leer, queda para completar a mano
+                        return None, None
+
+                pdfs_a_procesar = [(p, *_comprobante_para(p)) for p in pendientes]
                 if len(pdfs_a_procesar) > 1:
                     print(f"Encontré {len(pdfs_a_procesar)} PDFs pendientes, los proceso en orden de fecha de factura:")
                     for p, _, _ in pdfs_a_procesar:

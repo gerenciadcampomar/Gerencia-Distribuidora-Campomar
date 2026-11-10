@@ -460,6 +460,17 @@ def parse_totales_md(pdf_path: Path) -> InvoiceTotals:
 
 
 MD_FECHA_RE = re.compile(r"Nº\s*[\d\-\s]+\n(\d{1,2})\s+(\d{1,2})\s+(\d{2,4})")
+MD_COMPROBANTE_RE = re.compile(r"Nº\s*([0-9 ]+?)-\s*([0-9 ]+)")
+
+
+def extraer_comprobante_md(pdf_path: Path) -> tuple[str, str] | None:
+    """Punto de venta y número del comprobante (ej. "Nº 00003-00013991"
+    -> ("00003", "00013991")), para no tener que tipearlos a mano."""
+    texto = extraer_texto(pdf_path)
+    m = MD_COMPROBANTE_RE.search(texto)
+    if not m:
+        return None
+    return re.sub(r"\s+", "", m.group(1)), re.sub(r"\s+", "", m.group(2))
 
 
 def extraer_fecha_md(pdf_path: Path) -> datetime.date | None:
@@ -487,6 +498,13 @@ def extraer_fecha_md(pdf_path: Path) -> datetime.date | None:
 # usando el genérico de provider_identificacion.py.
 PROVIDER_FECHA_PARSERS = {
     "md": extraer_fecha_md,
+}
+
+# Idem para punto de venta/número: por ahora solo MD lo saca solo del PDF
+# (ver extraer_comprobante_md) -- el resto de los proveedores sigue
+# necesitando --punto-venta/--numero a mano.
+PROVIDER_COMPROBANTE_PARSERS = {
+    "md": extraer_comprobante_md,
 }
 
 

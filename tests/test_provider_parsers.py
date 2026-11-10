@@ -8,6 +8,7 @@ from campomar_compras.provider_parsers import (
     DOLZ_TOTAL_RE,
     MD_LINE_RE,
     MD_TOTALES_RE,
+    extraer_comprobante_md,
     extraer_fecha_md,
     NOSSO_ALICUOTA_RE,
     NOSSO_LINE_RE,
@@ -295,3 +296,9 @@ def test_md_fecha_sin_etiqueta_ni_barras(tmp_path, monkeypatch):
     monkeypatch.setattr(provider_parsers, "extraer_texto", lambda pdf_path: texto)
     fecha = extraer_fecha_md(tmp_path / "md_prueba.pdf")
     assert fecha.isoformat() == "2026-11-04"
+
+
+def test_md_comprobante_punto_venta_y_numero(tmp_path, monkeypatch):
+    texto = "A F A C T U R A\nCod. 001\nNº 00003- 00013991\n04 11 26\n"
+    monkeypatch.setattr(provider_parsers, "extraer_texto", lambda pdf_path: texto)
+    assert extraer_comprobante_md(tmp_path / "md_prueba.pdf") == ("00003", "00013991")

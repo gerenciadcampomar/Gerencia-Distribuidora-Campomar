@@ -264,15 +264,25 @@ class CentumBrowserClient:
             self.page.locator("#select2-lstTipoComprobante-container").click()
             self.page.locator("input.select2-search__field").fill(tipo_comprobante)
             self.page.locator("li.select2-results__option", has_text=tipo_comprobante).first.click()
-            # Confirmado con error real: id="txtFechaDocumento" (hay varios
-            # campos de fecha similares en filtros de búsqueda escondidos).
-            self.page.locator("#txtFechaDocumento").fill(fecha_documento)
-            # Confirmado con error real: id="txtPuntoVenta" (el otro,
-            # "txtPuntoVentaBusqueda", es el filtro de búsqueda de la grilla).
-            self.page.locator("#txtPuntoVenta").fill(punto_venta)
-            # Confirmado con error real: id="txtNumero" (el otro,
-            # "txtNumeroBusqueda", es el filtro de búsqueda de la grilla).
-            self.page.locator("#txtNumero").fill(numero)
+            # Confirmado con error real: si alguno de estos tres no se pudo
+            # obtener (None), Playwright explota feo con un TypeError en
+            # vez de un error claro -- se saltea el campo y lo deja para
+            # que la persona lo complete a mano en Centum al revisar.
+            if fecha_documento:
+                # Confirmado con error real: id="txtFechaDocumento" (hay
+                # varios campos de fecha similares en filtros de búsqueda
+                # escondidos).
+                self.page.locator("#txtFechaDocumento").fill(fecha_documento)
+            if punto_venta:
+                # Confirmado con error real: id="txtPuntoVenta" (el otro,
+                # "txtPuntoVentaBusqueda", es el filtro de búsqueda de la
+                # grilla).
+                self.page.locator("#txtPuntoVenta").fill(punto_venta)
+            if numero:
+                # Confirmado con error real: id="txtNumero" (el otro,
+                # "txtNumeroBusqueda", es el filtro de búsqueda de la
+                # grilla).
+                self.page.locator("#txtNumero").fill(numero)
 
         self._paso("completar_cabecera", accion)
 
