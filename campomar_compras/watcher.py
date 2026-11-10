@@ -643,11 +643,26 @@ def correr_watcher(
             client_actual = client
             for i, (pdf_path, pv, num) in enumerate(pdfs_a_procesar):
                 if i > 0:
-                    # Pestaña nueva en el mismo contexto -- ya está
-                    # logueado (comparte cookies/sesión), no hace falta
-                    # volver a loguearse.
+                    # Pestaña nueva en el mismo contexto -- comparte
+                    # cookies/sesión, así que no hace falta volver a
+                    # completar usuario/contraseña. Pero la pestaña en sí
+                    # arranca en blanco (about:blank): confirmado con
+                    # error real que, sin este goto, ir_a_compras_crear()
+                    # fallaba buscando el menú porque no había ninguna
+                    # página de Centum cargada todavía.
+                    print(f"Pasando a la próxima factura ({pdf_path.name})...")
                     pagina_actual = context.new_page()
+                    pagina_actual.goto(credenciales.url_login)
+                    pagina_actual.wait_for_load_state("networkidle")
                     client_actual = CentumBrowserClient(pagina_actual, directorio_debug=carpetas.base / "debug")
+                    # Por las dudas la sesión no se haya mantenido entre
+                    # pestañas, si sigue mostrando el formulario de login
+                    # se vuelve a loguear antes de seguir.
+                    try:
+                        pagina_actual.get_by_placeholder("Usuario").wait_for(timeout=3000)
+                        client_actual.login(credenciales)
+                    except Exception:  # noqa: BLE001 - ya está logueado, el campo no aparece
+                        pass
 
                 print(f"Procesando {pdf_path.name}...")
                 reporte = procesar_factura(
