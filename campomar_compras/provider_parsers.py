@@ -14,6 +14,7 @@ reconstruirse — falta ver más ejemplos para resolverlo bien.
 
 from __future__ import annotations
 
+import datetime
 import re
 from pathlib import Path
 
@@ -456,6 +457,37 @@ def parse_totales_md(pdf_path: Path) -> InvoiceTotals:
         iva=_num_md(m.group("iva")),
         total=_num_md(m.group("total")),
     )
+
+
+MD_FECHA_RE = re.compile(r"Nº\s*[\d\-\s]+\n(\d{1,2})\s+(\d{1,2})\s+(\d{2,4})")
+
+
+def extraer_fecha_md(pdf_path: Path) -> datetime.date | None:
+    """La fecha de MD no trae la etiqueta "Fecha" pegada al lado en el
+    texto extraído (está en un cuadro de texto separado del PDF que no
+    queda adyacente en el orden de lectura) ni usa barras ("04 11 26" en
+    vez de "04/11/26") -- el extractor de fecha genérico no la encuentra.
+    Se la ubica por su posición fija, justo después del número de
+    comprobante ("Nº 00003-00013991")."""
+    texto = extraer_texto(pdf_path)
+    m = MD_FECHA_RE.search(texto)
+    if not m:
+        return None
+    dia, mes, anio = (int(x) for x in m.groups())
+    if anio < 100:
+        anio += 2000
+    try:
+        return datetime.date(anio, mes, dia)
+    except ValueError:
+        return None
+
+
+# No todos los proveedores necesitan un extractor de fecha a medida --
+# solo se registran acá los que sí (ver extraer_fecha_md); el resto sigue
+# usando el genérico de provider_identificacion.py.
+PROVIDER_FECHA_PARSERS = {
+    "md": extraer_fecha_md,
+}
 
 
 PROVIDER_PARSERS = {

@@ -8,6 +8,7 @@ from campomar_compras.provider_parsers import (
     DOLZ_TOTAL_RE,
     MD_LINE_RE,
     MD_TOTALES_RE,
+    extraer_fecha_md,
     NOSSO_ALICUOTA_RE,
     NOSSO_LINE_RE,
     RALUX_LINE_RE,
@@ -281,3 +282,16 @@ def test_md_totales_reales(tmp_path, monkeypatch):
     assert totales.subtotal_neto == 4473086.05
     assert totales.iva == 939348.07
     assert totales.total == 5412434.12
+
+
+def test_md_fecha_sin_etiqueta_ni_barras(tmp_path, monkeypatch):
+    # Bug real encontrado: el extractor de fecha genérico espera la
+    # palabra "Fecha" pegada al número y con barras ("Fecha: 04/11/2026")
+    # -- el PDF de MD no trae la etiqueta adyacente (queda en un cuadro
+    # de texto separado) y usa espacios en vez de barras ("04 11 26").
+    # Se la ubica por posición fija, justo después del número de
+    # comprobante.
+    texto = "A F A C T U R A\nCod. 001\nNº 00003- 00013991\n04 11 26\nResponsabl e i nscr i pt o"
+    monkeypatch.setattr(provider_parsers, "extraer_texto", lambda pdf_path: texto)
+    fecha = extraer_fecha_md(tmp_path / "md_prueba.pdf")
+    assert fecha.isoformat() == "2026-11-04"

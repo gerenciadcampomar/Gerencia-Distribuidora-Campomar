@@ -39,7 +39,12 @@ from campomar_compras.provider_identificacion import (
     jurisdiccion_centum,
     nombre_centum,
 )
-from campomar_compras.provider_parsers import PROVIDER_PARSERS, PROVIDER_REGIMENES_PARSERS, regla_codigo_ralux
+from campomar_compras.provider_parsers import (
+    PROVIDER_FECHA_PARSERS,
+    PROVIDER_PARSERS,
+    PROVIDER_REGIMENES_PARSERS,
+    regla_codigo_ralux,
+)
 from campomar_compras.validator import validar_subtotal
 
 REGLAS_CODIGO = {"ralux": regla_codigo_ralux}
@@ -171,7 +176,11 @@ def procesar_factura(
     parse_lineas, parse_totales = PROVIDER_PARSERS[slug]
     lineas_factura = parse_lineas(pdf_path)
     totales_factura = parse_totales(pdf_path)
-    fecha_factura = extraer_fecha_factura(pdf_path)
+    # Algunos proveedores necesitan un extractor de fecha a medida (ver
+    # PROVIDER_FECHA_PARSERS) -- el genérico asume la etiqueta "Fecha"
+    # pegada al número con barras, y no todos los PDF lo imprimen así.
+    extractor_fecha = PROVIDER_FECHA_PARSERS.get(slug, extraer_fecha_factura)
+    fecha_factura = extractor_fecha(pdf_path)
     fecha_documento = fecha_factura.strftime("%d/%m/%Y") if fecha_factura else None
     mapping = CodeMappingStore(slug, regla=REGLAS_CODIGO.get(slug))
 
@@ -519,7 +528,9 @@ def correr_watcher(
 
                 def _fecha_para_orden(p: Path) -> datetime.date:
                     try:
-                        return extraer_fecha_factura(p) or datetime.date.max
+                        slug_p = identificar_proveedor(p)
+                        extractor = PROVIDER_FECHA_PARSERS.get(slug_p, extraer_fecha_factura)
+                        return extractor(p) or datetime.date.max
                     except Exception:  # noqa: BLE001 - si no se puede leer, va al final
                         return datetime.date.max
 
