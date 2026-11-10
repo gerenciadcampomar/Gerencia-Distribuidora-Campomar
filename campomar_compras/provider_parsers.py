@@ -450,17 +450,35 @@ def parse_lineas_md(pdf_path: Path) -> list[InvoiceLine]:
     # columna que una línea de artículo) se cuela como si fuera un
     # artículo más.
     m_totales = MD_TOTALES_RE.search(texto)
+    # Confirmado real (explicación directa del usuario): a diferencia de
+    # los demás proveedores, MD aplica un descuento comercial GENERAL al
+    # pie de la factura (no por línea) -- el precio impreso en cada
+    # renglón es de LISTA, sin ese descuento. En Centum, en cambio, el
+    # descuento siempre es por artículo: ese 60,4% general se carga ahí
+    # como "descuento ítem 1" en cada artículo (además de un eventual
+    # "ítem 3" puntual, cuando el proveedor da un descuento promocional
+    # adicional para un código -- ver MD_CODIGOS_CON_VARIANTE_DE_PRECIO).
+    # Por eso acá hay que aplicarle la misma fracción general a cada línea
+    # para que quede comparable (neta) contra lo que termina mostrando el
+    # remito ya suscripto en Centum.
+    fraccion_neta = 1.0
     if m_totales:
+        subtotal_bruto = _num_md(m_totales.group("subtotal_bruto"))
+        subtotal_neto = _num_md(m_totales.group("subtotal_neto"))
+        if subtotal_bruto:
+            fraccion_neta = subtotal_neto / subtotal_bruto
         texto = texto[: m_totales.start()]
     lineas = []
     for m in MD_LINE_RE.finditer(texto):
+        precio_lista = _num_md(m.group("precio"))
+        importe_lista = _num_md(m.group("importe"))
         lineas.append(
             InvoiceLine(
                 codigo_proveedor=_normalizar_codigo_md(_limpiar_codigo_md(m.group("codigo"))),
                 descripcion=re.sub(r"\s+", " ", m.group("descripcion")).strip(),
                 cantidad=_num_md(m.group("cantidad")),
-                precio_unitario=_num_md(m.group("precio")),
-                subtotal=_num_md(m.group("importe")),
+                precio_unitario=round(precio_lista * fraccion_neta, 2),
+                subtotal=round(importe_lista * fraccion_neta, 2),
             )
         )
     return lineas

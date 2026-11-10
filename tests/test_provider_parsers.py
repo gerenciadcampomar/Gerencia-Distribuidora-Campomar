@@ -297,6 +297,26 @@ def test_md_totales_no_se_cuela_como_linea_de_articulo(tmp_path, monkeypatch):
     assert lineas[0].codigo_proveedor == "14713"
 
 
+def test_md_aplica_el_descuento_general_del_pie_a_cada_linea(tmp_path, monkeypatch):
+    # Bug real explicado por el usuario: a diferencia de los demás
+    # proveedores, el precio impreso en cada línea de MD es de LISTA (sin
+    # descuento) -- el descuento comercial general (60,4% en esta factura
+    # real) se aplica una sola vez, al pie. Si no se aplica acá por línea,
+    # se termina comparando precio de lista contra el neto que ya trae el
+    # remito suscripto en Centum, y todo da precio_difiere.
+    texto = (
+        "5. 00 14713 I NT. LUZ DE STOP 11. 505, 49 57. 527, 45\n"
+        "SON pesos :\n"
+        "11295671. 85 6822585. 80 4473086. 05 I VA 21, 0% 939. 348, 07\n"
+        "5412434. 12\n"
+    )
+    monkeypatch.setattr(provider_parsers, "extraer_texto", lambda pdf_path: texto)
+    lineas = parse_lineas_md(tmp_path / "md_prueba.pdf")
+    fraccion_neta = 4473086.05 / 11295671.85
+    assert lineas[0].precio_unitario == round(11505.49 * fraccion_neta, 2)
+    assert lineas[0].subtotal == round(57527.45 * fraccion_neta, 2)
+
+
 def test_md_totales_reales(tmp_path, monkeypatch):
     texto = (
         "SON pesos : CINCO MILLONES CUATROCIENTOS DOCE MIL CUATROCIENTOS "
