@@ -17,15 +17,21 @@ from campomar_compras.provider_parsers import (
     RALUX_PERCEPCION_RE,
     RALUX_SUBTOTAL_RE,
     RALUX_TOTAL_RE,
+    SOME_LINE_RE,
+    SOME_TOTALES_RE,
     _num_eu,
     _num_md,
     _num_us,
     _sin_duplicado,
     _unir_celda_bronco,
+    extraer_comprobante_some,
+    extraer_fecha_some,
     parse_lineas_bronco,
     parse_lineas_md,
+    parse_lineas_some,
     parse_totales_bronco,
     parse_totales_md,
+    parse_totales_some,
     regla_codigo_ralux,
 )
 
@@ -386,3 +392,115 @@ def test_md_comprobante_punto_venta_y_numero(tmp_path, monkeypatch):
     texto = "A F A C T U R A\nCod. 001\nNº 00003- 00013991\n04 11 26\n"
     monkeypatch.setattr(provider_parsers, "extraer_texto", lambda pdf_path: texto)
     assert extraer_comprobante_md(tmp_path / "md_prueba.pdf") == ("00003", "00013991")
+
+
+# --- Some (SOME S.R.L.) -------------------------------------------------
+
+
+def test_some_linea_simple():
+    texto = "1.00 101162 CUBRE IMPULSOR TRAFIC - RENAULT 18 1400,T.INDIEL 29,739.821 29,739.82"
+    m = next(SOME_LINE_RE.finditer(texto))
+    assert m.group("cantidad") == "1.00"
+    assert m.group("codigo") == "101162"
+    assert m.group("precio") == "29,739.821"
+    assert m.group("importe") == "29,739.82"
+
+
+def test_some_codigo_alfanumerico_con_barra():
+    # Confirmado real: a diferencia de MD, acá la barra es simplemente
+    # parte del código de siempre (no hay dos precios para el mismo
+    # artículo con/sin barra) -- no necesita normalización.
+    texto = "3.00 CS1009/1 TAPA SOLENOIDE FORD TAUNUS 3,288.212 9,864.64"
+    m = next(SOME_LINE_RE.finditer(texto))
+    assert m.group("codigo") == "CS1009/1"
+
+
+def test_some_descripcion_que_empieza_con_numero_no_rompe_el_codigo():
+    # Confirmado real (capturas del usuario): varias descripciones
+    # arrancan con la cantidad de piezas del kit (ej. "4 TORNILLOS...",
+    # "20 ARAND..."), pegada a la descripción, no es un sufijo del código.
+    texto = "2.00 T1137 4 TORNILLOS MASA POLAR ARR.CA45/AN 115 2,693.059 5,386.12"
+    m = next(SOME_LINE_RE.finditer(texto))
+    assert m.group("codigo") == "T1137"
+    assert m.group("descripcion") == "4 TORNILLOS MASA POLAR ARR.CA45/AN 115"
+
+
+def test_some_totales_reales():
+    texto = (
+        "SUBTOTAL 1 % DESC. GRAL. SUBTOTAL 2 IVA 21.00 I.V.A. 0.00 TOTAL\n"
+        "49.65% - 5.00% - 40.00%\n"
+        "3,995,048.19 2,848,489.34 1,146,558.85 240,777.36 0.00 1,387,336.21\n"
+    )
+    m = SOME_TOTALES_RE.search(texto)
+    assert m.group("descuento") == "2,848,489.34"
+    assert m.group("subtotal_neto") == "1,146,558.85"
+    assert m.group("iva21") == "240,777.36"
+    assert m.group("iva0") == "0.00"
+    assert m.group("total") == "1,387,336.21"
+
+
+def test_some_totales_sin_subtotal1_en_pagina_intermedia(tmp_path, monkeypatch):
+    # Bug real: en una factura de más de una página, Some repite el
+    # renglón de totales al pie de cada página, pero una página
+    # intermedia puede no imprimir el Subtotal 1 (bruto) -- igual se
+    # puede sacar el neto y el descuento sin ese dato.
+    texto = (
+        "49.65% - 5.00% - 40.00%\n"
+        "2,848,489.34 1,146,558.85 240,777.36 0.00 1,387,336.21\n"
+    )
+    m = SOME_TOTALES_RE.search(texto)
+    assert m.group("subtotal_neto") == "1,146,558.85"
+
+
+def test_some_no_pierde_lineas_de_paginas_siguientes_al_renglon_de_totales(tmp_path, monkeypatch):
+    # Bug real encontrado: a diferencia de MD, acá el renglón de totales
+    # se repite al pie de CADA página (no solo la última) -- recortar el
+    # texto en la primera coincidencia (como hace MD) perdía todos los
+    # artículos de las páginas siguientes.
+    texto = (
+        "1.00 101162 CUBRE IMPULSOR TRAFIC 29,739.821 29,739.82\n"
+        "49.65% - 5.00% - 40.00%\n"
+        "3,995,048.19 2,848,489.34 1,146,558.85 240,777.36 0.00 1,387,336.21\n"
+        "3.00 CS1009/1 TAPA SOLENOIDE FORD TAUNUS 3,288.212 9,864.64\n"
+    )
+    monkeypatch.setattr(provider_parsers, "extraer_texto", lambda pdf_path: texto)
+    lineas = parse_lineas_some(tmp_path / "some_prueba.pdf")
+    assert [l.codigo_proveedor for l in lineas] == ["101162", "CS1009/1"]
+
+
+def test_some_aplica_el_descuento_general_del_pie_a_cada_linea(tmp_path, monkeypatch):
+    texto = (
+        "1.00 101162 CUBRE IMPULSOR TRAFIC 29,739.821 29,739.82\n"
+        "49.65% - 5.00% - 40.00%\n"
+        "3,995,048.19 2,848,489.34 1,146,558.85 240,777.36 0.00 1,387,336.21\n"
+    )
+    monkeypatch.setattr(provider_parsers, "extraer_texto", lambda pdf_path: texto)
+    lineas = parse_lineas_some(tmp_path / "some_prueba.pdf")
+    fraccion_neta = 1146558.85 / (1146558.85 + 2848489.34)
+    assert lineas[0].precio_unitario == round(29739.821 * fraccion_neta, 2)
+    assert lineas[0].subtotal == round(29739.82 * fraccion_neta, 2)
+
+
+def test_some_totales_combina_los_dos_iva(tmp_path, monkeypatch):
+    texto = (
+        "49.65% - 5.00% - 40.00%\n"
+        "3,995,048.19 2,848,489.34 1,146,558.85 240,777.36 0.00 1,387,336.21\n"
+    )
+    monkeypatch.setattr(provider_parsers, "extraer_texto", lambda pdf_path: texto)
+    totales = parse_totales_some(tmp_path / "some_prueba.pdf")
+    assert totales.subtotal_neto == 1146558.85
+    assert totales.iva == 240777.36
+    assert totales.total == 1387336.21
+
+
+def test_some_fecha(tmp_path, monkeypatch):
+    texto = "FACTURA A 0004 - 00081152\nFECHA DE EMISIÓN: 06/11/2026\n"
+    monkeypatch.setattr(provider_parsers, "extraer_texto", lambda pdf_path: texto)
+    fecha = extraer_fecha_some(tmp_path / "some_prueba.pdf")
+    assert fecha.isoformat() == "2026-11-06"
+
+
+def test_some_comprobante(tmp_path, monkeypatch):
+    texto = "FACTURA A 0004 - 00081152\nFECHA DE EMISIÓN: 06/11/2026\n"
+    monkeypatch.setattr(provider_parsers, "extraer_texto", lambda pdf_path: texto)
+    assert extraer_comprobante_some(tmp_path / "some_prueba.pdf") == ("0004", "00081152")

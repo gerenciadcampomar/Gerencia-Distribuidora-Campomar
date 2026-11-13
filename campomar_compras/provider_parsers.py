@@ -532,6 +532,118 @@ def parse_totales_md(pdf_path: Path) -> InvoiceTotals:
     )
 
 
+# --- Some (SOME S.R.L. -- Fábrica de Motores de Arranques y Alternadores) --
+
+# Confirmado real: a diferencia de todos los demás proveedores, Some
+# imprime los números en formato "inglés" (coma de miles, punto decimal,
+# ej. "29,739.821"), no en formato argentino.
+_SOME_NUM = r"\d{1,3}(?:,\d{3})*\.\d{2,3}"
+
+# El código puede ser alfanumérico (ej. "P4117", "P2344C", "CS1009/1") o
+# puramente numérico (ej. "101162", "451320").
+_SOME_CODIGO = r"[A-Z]{1,2}\d{3,6}[A-Z]?(?:/\d+)?|\d{5,6}"
+
+SOME_LINE_RE = re.compile(
+    rf"^(?P<cantidad>\d+\.\d{{2}})\s+"
+    rf"(?P<codigo>{_SOME_CODIGO})\s+"
+    rf"(?P<descripcion>.+?)\s+"
+    rf"(?P<precio>{_SOME_NUM})\s+"
+    rf"(?P<importe>{_SOME_NUM})\s*$",
+    re.MULTILINE,
+)
+
+# Confirmado real: igual que MD, cada renglón se imprime a precio de
+# LISTA -- el descuento comercial se aplica una sola vez, al pie, en TRES
+# escalones compuestos (ej. "49,65% - 5,00% - 40,00%", cada uno sobre el
+# resultado del anterior). No hace falta parsear esos tres porcentajes
+# por separado: el propio renglón de totales ya trae el descuento ($) y
+# el Subtotal 2 (neto) hechos, y Subtotal 1 (bruto) = descuento + neto.
+# El Subtotal 1 a veces no aparece en la fila de totales de una página
+# intermedia (factura de más de una página) -- por eso queda opcional acá
+# y no se usa para nada (se recalcula como descuento + neto).
+SOME_TOTALES_RE = re.compile(
+    r"\d+[.,]\d+%\s*-\s*\d+[.,]\d+%\s*-\s*\d+[.,]\d+%\s*\n\s*"
+    rf"(?:{_SOME_NUM}\s+)?"
+    rf"(?P<descuento>{_SOME_NUM})\s+"
+    rf"(?P<subtotal_neto>{_SOME_NUM})\s+"
+    rf"(?P<iva21>{_SOME_NUM})\s+"
+    rf"(?P<iva0>{_SOME_NUM})\s+"
+    rf"(?P<total>{_SOME_NUM})"
+)
+
+
+def parse_lineas_some(pdf_path: Path) -> list[InvoiceLine]:
+    texto = extraer_texto(pdf_path)
+    # OJO: a diferencia de MD, acá NO se recorta el texto antes de la fila
+    # de totales -- confirmado real: en una factura de más de una página,
+    # Some repite un renglón de totales (parcial) al pie de CADA página,
+    # no solo de la última. Si se recortara en la primera coincidencia,
+    # se perdían todos los artículos de las páginas siguientes. No hace
+    # falta igual: el renglón de totales no tiene ningún token que pueda
+    # confundirse con un código de artículo válido, así que SOME_LINE_RE
+    # no lo matchea por sí solo.
+    m_totales = SOME_TOTALES_RE.search(texto)
+    fraccion_neta = 1.0
+    if m_totales:
+        descuento = _num_us(m_totales.group("descuento"))
+        subtotal_neto = _num_us(m_totales.group("subtotal_neto"))
+        subtotal_bruto = subtotal_neto + descuento
+        if subtotal_bruto:
+            fraccion_neta = subtotal_neto / subtotal_bruto
+    lineas = []
+    for m in SOME_LINE_RE.finditer(texto):
+        precio_lista = _num_us(m.group("precio"))
+        importe_lista = _num_us(m.group("importe"))
+        lineas.append(
+            InvoiceLine(
+                codigo_proveedor=m.group("codigo"),
+                descripcion=re.sub(r"\s+", " ", m.group("descripcion")).strip(),
+                cantidad=float(m.group("cantidad")),
+                precio_unitario=round(precio_lista * fraccion_neta, 2),
+                subtotal=round(importe_lista * fraccion_neta, 2),
+            )
+        )
+    return lineas
+
+
+def parse_totales_some(pdf_path: Path) -> InvoiceTotals:
+    texto = extraer_texto(pdf_path)
+    m = SOME_TOTALES_RE.search(texto)
+    if not m:
+        raise ValueError("No se pudo extraer el bloque de totales del PDF de Some.")
+    return InvoiceTotals(
+        subtotal_neto=_num_us(m.group("subtotal_neto")),
+        iva=round(_num_us(m.group("iva21")) + _num_us(m.group("iva0")), 2),
+        total=_num_us(m.group("total")),
+    )
+
+
+SOME_FECHA_RE = re.compile(r"FECHA DE EMISIÓN:\s*(\d{1,2})/(\d{1,2})/(\d{2,4})")
+SOME_COMPROBANTE_RE = re.compile(r"FACTURA A\s+(\d+)\s*-\s*(\d+)")
+
+
+def extraer_fecha_some(pdf_path: Path) -> datetime.date | None:
+    texto = extraer_texto(pdf_path)
+    m = SOME_FECHA_RE.search(texto)
+    if not m:
+        return None
+    dia, mes, anio = (int(x) for x in m.groups())
+    if anio < 100:
+        anio += 2000
+    try:
+        return datetime.date(anio, mes, dia)
+    except ValueError:
+        return None
+
+
+def extraer_comprobante_some(pdf_path: Path) -> tuple[str, str] | None:
+    texto = extraer_texto(pdf_path)
+    m = SOME_COMPROBANTE_RE.search(texto)
+    if not m:
+        return None
+    return m.group(1), m.group(2)
+
+
 MD_FECHA_RE = re.compile(r"Nº\s*[\d\-\s]+\n(\d{1,2})\s+(\d{1,2})\s+(\d{2,4})")
 MD_COMPROBANTE_RE = re.compile(r"Nº\s*([0-9 ]+?)-\s*([0-9 ]+)")
 
@@ -571,6 +683,7 @@ def extraer_fecha_md(pdf_path: Path) -> datetime.date | None:
 # usando el genérico de provider_identificacion.py.
 PROVIDER_FECHA_PARSERS = {
     "md": extraer_fecha_md,
+    "some": extraer_fecha_some,
 }
 
 # Idem para punto de venta/número: por ahora solo MD lo saca solo del PDF
@@ -578,6 +691,7 @@ PROVIDER_FECHA_PARSERS = {
 # necesitando --punto-venta/--numero a mano.
 PROVIDER_COMPROBANTE_PARSERS = {
     "md": extraer_comprobante_md,
+    "some": extraer_comprobante_some,
 }
 
 
@@ -587,6 +701,7 @@ PROVIDER_PARSERS = {
     "dolz": (parse_lineas_dolz, parse_totales_dolz),
     "bronco": (parse_lineas_bronco, parse_totales_bronco),
     "md": (parse_lineas_md, parse_totales_md),
+    "some": (parse_lineas_some, parse_totales_some),
 }
 
 # No todos los proveedores tienen percepciones/regímenes especiales en su
