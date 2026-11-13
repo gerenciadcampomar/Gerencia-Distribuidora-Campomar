@@ -175,15 +175,15 @@ def procesar_factura(
             f"hay parser para ese proveedor todavía). Revisar a mano."
         )
 
-    nombre_buscar = nombre_centum(slug)
-    if nombre_buscar is None:
-        return (
-            f"NO PROCESADO: proveedor '{slug}' identificado, pero falta su nombre "
-            f"de búsqueda en campomar_compras/providers/nombres_centum.json."
-        )
     cuit_buscar = cuit_proveedor(slug)
     if cuit_buscar is None:
         return f"NO PROCESADO: proveedor '{slug}' identificado, pero no tiene CUIT en cuits.json."
+    # El nombre en nombres_centum.json es opcional: solo hace falta para
+    # desambiguar cuando la búsqueda por CUIT trae más de un proveedor
+    # (ver elegir_proveedor) -- si el CUIT es único en Centum (el caso
+    # normal), no se necesita. Si hace falta y no está, elegir_proveedor
+    # tira un PasoCentumError claro pidiéndolo, en vez de frenar acá.
+    nombre_buscar = nombre_centum(slug)
 
     parse_lineas, parse_totales = PROVIDER_PARSERS[slug]
     lineas_factura = parse_lineas(pdf_path)
