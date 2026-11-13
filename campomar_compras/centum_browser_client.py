@@ -255,6 +255,7 @@ class CentumBrowserClient:
         fecha_documento: str,
         punto_venta: str,
         numero: str,
+        tipo_descuento_proveedor: str | None = None,
     ) -> None:
         def accion():
             # Tipo Comprobante también es Select2 (id="lstTipoComprobante",
@@ -265,6 +266,18 @@ class CentumBrowserClient:
             self.page.locator("#select2-lstTipoComprobante-container").click()
             self.page.locator("input.select2-search__field").fill(tipo_comprobante)
             self.page.locator("li.select2-results__option", has_text=tipo_comprobante).first.click()
+            if tipo_descuento_proveedor:
+                # Confirmado con DevTools real: mismo patrón Select2 que
+                # Tipo Comprobante (id="select2-lstDescuentoProveedor-
+                # container"). Algunos proveedores (ej. Some) tienen el
+                # descuento general cargado acá en vez de por artículo --
+                # al elegirlo, Centum completa solo el campo "Descuento
+                # Obtenido" con el porcentaje resultante.
+                self.page.locator("#select2-lstDescuentoProveedor-container").click()
+                self.page.locator("input.select2-search__field").fill(tipo_descuento_proveedor)
+                self.page.locator(
+                    "li.select2-results__option", has_text=tipo_descuento_proveedor
+                ).first.click()
             # Confirmado con error real: si alguno de estos tres no se pudo
             # obtener (None), Playwright explota feo con un TypeError en
             # vez de un error claro -- se saltea el campo y lo deja para

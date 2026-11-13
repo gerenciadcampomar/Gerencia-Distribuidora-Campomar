@@ -39,6 +39,7 @@ from campomar_compras.provider_identificacion import (
     identificar_proveedor,
     jurisdiccion_centum,
     nombre_centum,
+    tipo_descuento_centum,
 )
 from campomar_compras.provider_parsers import (
     PROVIDER_COMPROBANTE_PARSERS,
@@ -184,6 +185,11 @@ def procesar_factura(
     # normal), no se necesita. Si hace falta y no está, elegir_proveedor
     # tira un PasoCentumError claro pidiéndolo, en vez de frenar acá.
     nombre_buscar = nombre_centum(slug)
+    # Algunos proveedores (ej. Some) tienen el descuento general cargado
+    # por un código del combo "Tipo de Descuento de Proveedor" en vez de
+    # por artículo (ver descuentos_centum.json) -- si no aplica, queda en
+    # None y completar_cabecera no toca ese campo.
+    tipo_descuento_buscar = tipo_descuento_centum(slug)
 
     parse_lineas, parse_totales = PROVIDER_PARSERS[slug]
     lineas_factura = parse_lineas(pdf_path)
@@ -203,6 +209,7 @@ def procesar_factura(
         fecha_documento=fecha_documento,
         punto_venta=punto_venta,
         numero=numero,
+        tipo_descuento_proveedor=tipo_descuento_buscar,
     )
     client.abrir_remitos_pendientes()
     remitos_pendientes = client.listar_remitos_pendientes()

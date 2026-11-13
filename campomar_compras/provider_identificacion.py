@@ -15,6 +15,7 @@ from campomar_compras.pdf_extractor import extraer_texto
 CUITS_PATH = Path(__file__).parent / "providers" / "cuits.json"
 NOMBRES_CENTUM_PATH = Path(__file__).parent / "providers" / "nombres_centum.json"
 JURISDICCIONES_CENTUM_PATH = Path(__file__).parent / "providers" / "jurisdicciones_centum.json"
+DESCUENTOS_CENTUM_PATH = Path(__file__).parent / "providers" / "descuentos_centum.json"
 
 CUIT_RE = re.compile(
     r"C\.?U\.?I\.?T\.?\s*(?:Nro\.?|N[°º]?)?\s*[:\.]?\s*([\d][\d\-]{9,12}\d)",
@@ -146,4 +147,18 @@ def nombre_centum(slug_proveedor: str) -> str | None:
     if not NOMBRES_CENTUM_PATH.exists():
         return None
     tabla = json.loads(NOMBRES_CENTUM_PATH.read_text(encoding="utf-8"))
+    return tabla.get(slug_proveedor)
+
+
+def tipo_descuento_centum(slug_proveedor: str) -> str | None:
+    """Valor del combo "Tipo de Descuento de Proveedor" en la cabecera de
+    Centum (ej. "40+5 Dipra" para Some) -- algunos proveedores tienen el
+    descuento general de sus artículos cargado por un código de este
+    combo en vez de por artículo individual, y hay que elegirlo al
+    completar la cabecera para que el sistema calcule el "Descuento
+    Obtenido" solo. No todos los proveedores lo necesitan (ver
+    completar_cabecera en centum_browser_client.py)."""
+    if not DESCUENTOS_CENTUM_PATH.exists():
+        return None
+    tabla = json.loads(DESCUENTOS_CENTUM_PATH.read_text(encoding="utf-8"))
     return tabla.get(slug_proveedor)
