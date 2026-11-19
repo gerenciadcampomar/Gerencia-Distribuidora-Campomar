@@ -208,6 +208,17 @@ def test_remito_con_dos_renglones_resuelve_subconjunto_exacto(tmp_path):
     assert por_status[MatchStatus.EXCEDENTE].remito_lines[0].numero_remito == "r2"
 
 
+def test_comparar_precio_false_ignora_diferencia_de_precio(tmp_path):
+    # Usado por el flujo genérico (proveedores sin parser calibrado):
+    # no hay precio confiable para comparar, así que un código y
+    # cantidad que cierran dan OK directo, sin importar el precio.
+    remitos = [RemitoArticleLine("Z837", "Impulsor", "r1", 1, 100.0)]
+    facturas = [InvoiceLine("837", "Impulsor", 1, 0.0)]
+    resultados = match_remitos_contra_factura(remitos, facturas, _mapping(tmp_path), comparar_precio=False)
+    assert len(resultados) == 1
+    assert resultados[0].status == MatchStatus.OK
+
+
 def test_subtotal_propuesto_suma_ok_y_faltantes(tmp_path):
     remitos = [RemitoArticleLine("Z837", "Impulsor", "r1", 1, 100.0)]
     facturas = [

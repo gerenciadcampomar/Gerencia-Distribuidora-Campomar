@@ -126,7 +126,12 @@ def match_remitos_contra_factura(
     remito_lines: list[RemitoArticleLine],
     invoice_lines: list[InvoiceLine],
     mapping: CodeMappingStore,
+    comparar_precio: bool = True,
 ) -> list[MatchResult]:
+    """comparar_precio=False: usado por el flujo genérico (ver
+    extraccion_generica.py), que no tiene un precio confiable para
+    comparar -- un código y cantidad que cierran se dan directamente por
+    OK, sin pasar por la comparación de precio."""
     resultados: list[MatchResult] = []
     invoice_restantes = list(invoice_lines)
 
@@ -212,18 +217,19 @@ def match_remitos_contra_factura(
             )
             continue
 
-        precio_neto_remito = subtotal_remito / cantidad_remito
-        # Precio NETO de la factura (subtotal facturado / cantidad), no el
-        # precio unitario bruto -- confirmado con error real: cuando hay
-        # descuento comercial, el remito ya viene con el descuento
-        # aplicado ("neto c/dto"), pero se estaba comparando contra el
-        # precio unitario bruto de la factura (sin descontar), dando
-        # precio_difiere en casi todas las líneas aunque en realidad
-        # coincidían perfecto (ej. 968,49 vs 1.210,61 = exactamente 20%
-        # de diferencia en decenas de líneas, sistemático). Mismo criterio
-        # que ya usa ConceptoFaltante para los faltantes.
-        precio_neto_factura = match_encontrado.subtotal / match_encontrado.cantidad
-        if not _precio_coincide(precio_neto_remito, precio_neto_factura):
+        if comparar_precio:
+            precio_neto_remito = subtotal_remito / cantidad_remito
+            # Precio NETO de la factura (subtotal facturado / cantidad), no el
+            # precio unitario bruto -- confirmado con error real: cuando hay
+            # descuento comercial, el remito ya viene con el descuento
+            # aplicado ("neto c/dto"), pero se estaba comparando contra el
+            # precio unitario bruto de la factura (sin descontar), dando
+            # precio_difiere en casi todas las líneas aunque en realidad
+            # coincidían perfecto (ej. 968,49 vs 1.210,61 = exactamente 20%
+            # de diferencia en decenas de líneas, sistemático). Mismo criterio
+            # que ya usa ConceptoFaltante para los faltantes.
+            precio_neto_factura = match_encontrado.subtotal / match_encontrado.cantidad
+        if comparar_precio and not _precio_coincide(precio_neto_remito, precio_neto_factura):
             resultados.append(
                 MatchResult(
                     status=MatchStatus.PRECIO_DIFIERE,

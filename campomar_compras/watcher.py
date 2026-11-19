@@ -33,8 +33,10 @@ from campomar_compras.centum_browser_client import CentumBrowserClient, CentumCr
 from campomar_compras.code_mapping import CodeMappingStore
 from campomar_compras.matcher import match_remitos_contra_factura, proponer_conceptos_faltantes
 from campomar_compras.models import MatchResult
+from campomar_compras.extraccion_generica import extraer_lineas_generico
 from campomar_compras.provider_identificacion import (
     cuit_proveedor,
+    extraer_cuit_proveedor,
     extraer_fecha_factura,
     identificar_proveedor,
     jurisdiccion_centum,
@@ -170,10 +172,19 @@ def procesar_factura(
     que lo cubre)."""
     slug = identificar_proveedor(pdf_path)
     if slug is None or slug not in PROVIDER_PARSERS:
-        return (
-            f"NO PROCESADO: no pude identificar el proveedor de '{pdf_path.name}' "
-            f"(CUIT no encontrado en campomar_compras/providers/cuits.json, o no "
-            f"hay parser para ese proveedor todavía). Revisar a mano."
+        # Sin parser calibrado para este proveedor (o sin poder
+        # identificarlo por CUIT/nombre/archivo) -- pedido explícito del
+        # usuario: en vez de frenar acá, cae al camino genérico (solo
+        # código y cantidad, ver procesar_factura_generico) para no
+        # depender de calibrar cada proveedor antes de poder usarlo.
+        return procesar_factura_generico(
+            pdf_path,
+            client,
+            carpetas,
+            tipo_comprobante=tipo_comprobante,
+            punto_venta=punto_venta,
+            numero=numero,
+            es_ultima_del_lote=es_ultima_del_lote,
         )
 
     cuit_buscar = cuit_proveedor(slug)
@@ -443,6 +454,180 @@ def procesar_factura(
         ">>> PASS: anda a Centum, revisá la compra y guardala vos mismo. <<<"
         if validacion.ok
         else ">>> FAIL: NO guardes, revisá las diferencias. La pestaña quedó abierta. <<<",
+    ]
+    return "\n".join(lineas_reporte)
+
+
+def procesar_factura_generico(
+    pdf_path: Path,
+    client: CentumBrowserClient,
+    carpetas: Carpetas,
+    tipo_comprobante: str = "Factura de Compras",
+    punto_venta: str | None = None,
+    numero: str | None = None,
+    es_ultima_del_lote: bool = False,
+) -> str:
+    """Camino genérico para proveedores SIN parser calibrado todavía (ver
+    extraccion_generica.py) -- pedido explícito del usuario para no
+    depender de calibrar cada proveedor antes de poder usar el agente.
+
+    Solo compara CÓDIGO y CANTIDAD -- no hay precio confiable en esta vía
+    (extraer_lineas_generico no lo intenta), así que NO valida precio,
+    NO toca descuentos, y NO carga Regímenes Especiales (sigue haciendo
+    falta un parser por proveedor para eso). Sí actúa sobre lo que puede
+    decidir solo con código y cantidad: elimina excedentes, ajusta
+    cantidades parciales (mismo truco de subconjuntos que el flujo
+    calibrado) -- para que lo que quede en pantalla sea el comprobante
+    real, no el remito crudo con sobrantes. Los faltantes NO se cargan
+    solos como Concepto (necesitaría un precio que acá no tenemos, y
+    cargarlo en $0 sería un dato falso) -- quedan marcados en el reporte
+    para cargarlos a mano con el precio real de la factura."""
+    cuit_buscar = extraer_cuit_proveedor(pdf_path)
+    if cuit_buscar is None:
+        return (
+            f"NO PROCESADO: no encontré el CUIT del proveedor en '{pdf_path.name}'. "
+            "Revisar a mano."
+        )
+
+    fecha_factura = extraer_fecha_factura(pdf_path)
+    fecha_documento = fecha_factura.strftime("%d/%m/%Y") if fecha_factura else None
+    mapping = CodeMappingStore("generico", providers_dir=carpetas.base / "providers_generico")
+
+    client.ir_a_compras_crear()
+    client.elegir_proveedor(cuit_buscar, None)
+    client.completar_cabecera(
+        tipo_comprobante=tipo_comprobante,
+        fecha_documento=fecha_documento,
+        punto_venta=punto_venta,
+        numero=numero,
+    )
+    client.abrir_remitos_pendientes()
+    remitos_pendientes = client.listar_remitos_pendientes()
+    numeros_elegidos = _elegir_remitos_mas_cercanos(remitos_pendientes, fecha_factura)
+    client.seleccionar_remitos(numeros_elegidos)
+
+    remitos_cargados = client.leer_articulos_cargados()
+    codigos_remito = [r.codigo_propio_proveedor or r.codigo_articulo for r in remitos_cargados]
+    lineas_factura = extraer_lineas_generico(pdf_path, codigos_remito=codigos_remito)
+    resultados = match_remitos_contra_factura(remitos_cargados, lineas_factura, mapping, comparar_precio=False)
+
+    excedentes = [r for r in resultados if r.status.value == "excedente"]
+    for r in excedentes:
+        for remito_line in r.remito_lines:
+            client.marcar_articulo_para_eliminar(
+                remito_line.numero_remito, remito_line.codigo_articulo, remito_line.codigo_propio_proveedor
+            )
+    if excedentes:
+        client.eliminar_articulos_marcados()
+
+    excedentes_parciales = [r for r in resultados if r.status.value == "excedente_parcial"]
+    excedentes_parciales_sin_ajustar = [r for r in excedentes_parciales if len(r.remito_lines) != 1]
+
+    faltantes = [r for r in resultados if r.status.value in ("faltante", "faltante_parcial")]
+
+    ajustes_no_verificados: list[MatchResult] = []
+    for r in excedentes_parciales:
+        if len(r.remito_lines) == 1:
+            remito_line = r.remito_lines[0]
+            verificado = client.ajustar_cantidad_excedente_parcial(
+                remito_line.numero_remito,
+                remito_line.codigo_articulo,
+                r.invoice_line.cantidad,
+                remito_line.codigo_propio_proveedor,
+            )
+            if not verificado:
+                ajustes_no_verificados.append(r)
+
+    if fecha_documento:
+        client.fijar_fecha_documento(fecha_documento)
+
+    client.mostrar_totales()
+
+    numero_comprobante = f"{punto_venta}-{numero}" if punto_venta and numero else pdf_path.name
+    hay_revision_manual = bool(excedentes_parciales_sin_ajustar or faltantes or ajustes_no_verificados)
+    if hay_revision_manual:
+        notificar_usuario(
+            f"Compra genérica con pendientes (CUIT {cuit_buscar})",
+            f"Comprobante {numero_comprobante}: código y cantidad procesados, pero hay "
+            "cosas para revisar a mano (ver reporte) -- esta vía no valida precio. "
+            "NO guardes sin revisar.",
+        )
+    else:
+        notificar_usuario(
+            f"Compra genérica lista para revisar (CUIT {cuit_buscar})",
+            f"Comprobante {numero_comprobante}: código y cantidad OK. Esta vía NO valida "
+            "precio ni descuentos -- revisalos vos antes de guardar.",
+        )
+
+    lineas_reporte = [
+        f"Factura: {pdf_path.name}",
+        f"Proveedor: genérico (CUIT {cuit_buscar}, sin parser calibrado)",
+        f"Remitos elegidos: {', '.join(numeros_elegidos) or '(ninguno)'}",
+        "",
+        ">>> Modo genérico: solo se compararon código y cantidad. Precio, descuentos "
+        "y Regímenes Especiales NO están validados en esta vía -- revisalos a mano. <<<",
+        "",
+    ]
+    for r in resultados:
+        codigo = r.remito_lines[0].codigo_articulo if r.remito_lines else r.invoice_line.codigo_proveedor
+        aviso = ""
+        if r.invoice_line is not None and r.invoice_line.descripcion.startswith("(encontrado por búsqueda"):
+            aviso = "  [cantidad SIN CONFIRMAR, encontrado solo por texto]"
+        lineas_reporte.append(f"  [{r.status.value}] {codigo}  {r.notes}{aviso}")
+
+    excedentes_parciales_ajustados = [r for r in excedentes_parciales if r not in excedentes_parciales_sin_ajustar]
+    if excedentes_parciales_ajustados:
+        lineas_reporte.append("")
+        lineas_reporte.append("Cantidad ajustada (el proveedor entregó de más que lo facturado):")
+        for r in excedentes_parciales_ajustados:
+            codigo = r.remito_lines[0].codigo_articulo
+            aviso = "  >>> NO SE PUDO VERIFICAR, revisalo a mano <<<" if r in ajustes_no_verificados else ""
+            lineas_reporte.append(
+                f"  {codigo}: sobraban {r.cantidad_diferencia}, quedó en {r.invoice_line.cantidad}{aviso}"
+            )
+    if excedentes_parciales_sin_ajustar:
+        lineas_reporte.append("")
+        lineas_reporte.append(
+            ">>> ATENCIÓN: hay artículos remitidos de más en más de un renglón repetido "
+            "del mismo código -- no se pudo decidir solo cuál ajustar, hacelo a mano: <<<"
+        )
+        for r in excedentes_parciales_sin_ajustar:
+            codigo = r.remito_lines[0].codigo_articulo
+            lineas_reporte.append(
+                f"  {codigo}: sobran {r.cantidad_diferencia} entre {len(r.remito_lines)} renglones "
+                f"(dejar {r.invoice_line.cantidad} en total)"
+            )
+    if faltantes:
+        lineas_reporte.append("")
+        lineas_reporte.append(
+            ">>> ATENCIÓN: facturado pero no remitido -- cargalo a mano como Concepto "
+            "'Mercaderías Varias' con el precio real de la factura (acá no se cargó "
+            "solo porque esta vía no tiene precio confiable): <<<"
+        )
+        for r in faltantes:
+            cantidad = r.cantidad_diferencia if r.status.value == "faltante_parcial" else r.invoice_line.cantidad
+            lineas_reporte.append(f"  {r.invoice_line.codigo_proveedor}: {cantidad}")
+
+    if es_ultima_del_lote and (excedentes or excedentes_parciales):
+        lineas_reporte.append("")
+        lineas_reporte.append(
+            ">>> ÚLTIMA FACTURA DEL LOTE: esto quedó pendiente de suscribir y "
+            "NINGUNA otra factura de esta corrida lo va a cubrir -- si no esperás "
+            "otra factura o un presupuesto del proveedor que lo incluya, revisalo: <<<"
+        )
+        for r in excedentes:
+            for remito_line in r.remito_lines:
+                lineas_reporte.append(
+                    f"  {remito_line.codigo_articulo}: {remito_line.cantidad} eliminado de esta compra"
+                )
+        for r in excedentes_parciales:
+            codigo = r.remito_lines[0].codigo_articulo
+            lineas_reporte.append(f"  {codigo}: {r.cantidad_diferencia} quedó pendiente")
+
+    lineas_reporte += [
+        "",
+        ">>> Revisá código, cantidad, precio y descuentos a mano -- esta vía no "
+        "valida precio. Guardá en Centum solo si está todo OK. <<<",
     ]
     return "\n".join(lineas_reporte)
 
