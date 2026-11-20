@@ -188,11 +188,10 @@ def test_remito_con_dos_renglones_resuelve_subconjunto_exacto(tmp_path):
     # facturas casi simultáneas (991 y 992), el código 15003 llegó con DOS
     # renglones (52 + 52 = 104) -- antes, como el total (104) no coincidía
     # con lo facturado en ESTA factura (52), se mandaba todo a revisión
-    # manual. Ahora se busca un subconjunto exacto: uno de los dos
-    # renglones (52) matchea solo, así que ese es el de esta factura y el
-    # otro queda para la próxima (se elimina de esta, como un excedente
-    # normal -- confirmado con el usuario: "es problema del siguiente
-    # comprobante").
+    # manual. Ahora se reparte la baja entre los dos: como cada uno (52)
+    # ya alcanza solo para cubrir lo que sobra (52), uno se elimina
+    # entero (queda para la próxima factura) y el otro queda intacto,
+    # sin necesitar que sea exactamente un renglón en particular.
     remitos = [
         RemitoArticleLine("MD15003/1", "Bulbo", "r1", 52, 4837.78, codigo_propio_proveedor="15003"),
         RemitoArticleLine("MD15003/1", "Bulbo", "r2", 52, 4837.78, codigo_propio_proveedor="15003"),
@@ -203,9 +202,36 @@ def test_remito_con_dos_renglones_resuelve_subconjunto_exacto(tmp_path):
     assert len(resultados) == 2
     por_status = {r.status: r for r in resultados}
     assert MatchStatus.OK in por_status
-    assert por_status[MatchStatus.OK].remito_lines[0].numero_remito == "r1"
     assert MatchStatus.EXCEDENTE in por_status
-    assert por_status[MatchStatus.EXCEDENTE].remito_lines[0].numero_remito == "r2"
+    numeros = {por_status[MatchStatus.OK].remito_lines[0].numero_remito, por_status[MatchStatus.EXCEDENTE].remito_lines[0].numero_remito}
+    assert numeros == {"r1", "r2"}
+
+
+def test_reparte_la_baja_cuando_ningun_subconjunto_cierra_exacto(tmp_path):
+    # Pedido explícito del usuario: no importa si el código viene en
+    # varios renglones -- aunque NINGÚN subconjunto de ellos sume
+    # exactamente lo facturado (104 = 30+74, factura pide 52, y ni 30 ni
+    # 74 ni 30+74 da 52), el total remitido tiene que terminar en 52 de
+    # todas formas: se elimina el renglón más chico entero (30) y el
+    # más grande (74) se ajusta parcial a 44 (74 - (52 sobrante - 30
+    # eliminado) = 74 - 22 = 52 en total entre lo que queda).
+    remitos = [
+        RemitoArticleLine("MD15003/1", "Bulbo", "r1", 30, 4837.78, codigo_propio_proveedor="15003"),
+        RemitoArticleLine("MD15003/1", "Bulbo", "r2", 74, 4837.78, codigo_propio_proveedor="15003"),
+    ]
+    facturas = [InvoiceLine("15003", "Bulbo", 52, 4837.78)]
+
+    resultados = match_remitos_contra_factura(remitos, facturas, _mapping(tmp_path))
+    assert len(resultados) == 2
+    por_status = {r.status: r for r in resultados}
+    assert MatchStatus.EXCEDENTE in por_status
+    assert por_status[MatchStatus.EXCEDENTE].remito_lines[0].numero_remito == "r1"
+    # EXCEDENTE_PARCIAL de un solo renglón -- watcher.py ya sabe ajustar
+    # este caso solo (len(remito_lines) == 1), sin revisión manual.
+    assert MatchStatus.EXCEDENTE_PARCIAL in por_status
+    ajustado = por_status[MatchStatus.EXCEDENTE_PARCIAL]
+    assert ajustado.remito_lines[0].numero_remito == "r2"
+    assert ajustado.invoice_line.cantidad == 52
 
 
 def test_comparar_precio_false_ignora_diferencia_de_precio(tmp_path):

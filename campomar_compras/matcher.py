@@ -23,16 +23,17 @@ Clasifica cada grupo en:
   cantidad que la factura (el proveedor entregó de más, o el remito juntó
   entregas de otra factura cercana en fecha) -> se baja la cantidad del
   artículo a la facturada. Si el código venía repetido en más de un
-  renglón del remito, primero se busca un subconjunto exacto de esos
-  renglones que sí coincida con lo facturado (ver _mejor_subconjunto);
-  si se encuentra, el renglón sobrante se trata como un EXCEDENTE más
-  (se elimina, queda pendiente para la próxima factura). Solo si no hay
-  un subconjunto exacto se manda a revisión manual en el reporte.
+  renglón del remito, se reparte la baja entre esos renglones (ver
+  _distribuir_reduccion): no hace falta que un subconjunto cierre
+  exacto -- confirmado con el usuario que no importa en cuántos
+  renglones venga repartido un código, el total remitido tiene que
+  terminar en lo facturado. Se eliminan renglones enteros (de menor a
+  mayor cantidad) hasta que lo que falta eliminar entra en el siguiente,
+  que se ajusta parcial -- siempre se puede resolver solo, nunca hace
+  falta revisión manual para este caso.
 """
 
 from __future__ import annotations
-
-from itertools import combinations
 
 from campomar_compras.code_mapping import CodeMappingStore
 from campomar_compras.models import (
@@ -74,26 +75,37 @@ def _agrupar_por_codigo(remito_lines: list[RemitoArticleLine]) -> list[list[Remi
     return [grupos[clave] for clave in orden]
 
 
-def _mejor_subconjunto(grupo: list[RemitoArticleLine], cantidad_objetivo: float) -> list[RemitoArticleLine] | None:
-    """Cuando un código viene repetido en más de un renglón del remito,
-    no necesariamente todos esos renglones son de ESTA factura -- puede
-    haber remitos juntados en la misma ventana de días que en realidad
-    corresponden a otro comprobante del mismo proveedor (confirmado real:
-    al traer remitos para dos facturas casi simultáneas, varios códigos
-    terminaban con el doble de cantidad remitida). Si existe un
-    subconjunto EXACTO de renglones cuya cantidad sumada coincide con lo
-    facturado, se asume que ese subconjunto es el de esta factura y se
-    dejan los demás renglones intactos (pendientes para la próxima), en
-    vez de mandar todo a revisión manual."""
-    n = len(grupo)
-    if n > 10:  # cota de seguridad -- no se vieron casos reales con tantos renglones
-        return None
-    for r in range(1, n):
-        for combo in combinations(range(n), r):
-            cantidad = sum(grupo[i].cantidad for i in combo)
-            if abs(cantidad - cantidad_objetivo) <= CANTIDAD_TOLERANCIA:
-                return [grupo[i] for i in combo]
-    return None
+def _distribuir_reduccion(
+    grupo: list[RemitoArticleLine], cantidad_objetivo: float
+) -> tuple[list[RemitoArticleLine], RemitoArticleLine | None, float]:
+    """Cuando un código viene repetido en más de un renglón del remito y
+    sobra cantidad contra lo facturado, reparte la baja entre esos
+    renglones -- no hace falta que un subconjunto cierre exacto
+    (confirmado con el usuario: no importa en cuántos renglones venga
+    repartido, el total remitido tiene que terminar en lo facturado).
+
+    De menor a mayor cantidad, elimina renglones enteros mientras lo que
+    falta eliminar sea mayor o igual a su cantidad -- el primer renglón
+    en el que ya no entra entero se ajusta PARCIAL (se le resta lo que
+    falta), y los renglones más grandes que no hizo falta tocar quedan
+    intactos. Como el grupo entero siempre suma más que el objetivo (es
+    la precondición para llamar a esto), esto SIEMPRE encuentra una
+    solución.
+
+    Devuelve (renglones a eliminar enteros, renglón a ajustar parcial o
+    None si no hace falta, cantidad nueva de ese renglón)."""
+    orden = sorted(grupo, key=lambda linea: linea.cantidad)
+    restante = round(sum(linea.cantidad for linea in grupo) - cantidad_objetivo, 3)
+    eliminar: list[RemitoArticleLine] = []
+    for linea in orden:
+        if restante <= CANTIDAD_TOLERANCIA:
+            break
+        if linea.cantidad <= restante + CANTIDAD_TOLERANCIA:
+            eliminar.append(linea)
+            restante = round(restante - linea.cantidad, 3)
+        else:
+            return eliminar, linea, round(linea.cantidad - restante, 3)
+    return eliminar, None, 0.0
 
 
 def _coincide_con_factura(representante: RemitoArticleLine, inv_line: InvoiceLine, mapping: CodeMappingStore) -> bool:
@@ -160,29 +172,55 @@ def match_remitos_contra_factura(
 
         if len(grupo) > 1 and diferencia > CANTIDAD_TOLERANCIA:
             # El código vino repetido en más de un renglón del remito y
-            # sobra cantidad -- antes de mandar todo a revisión manual,
-            # se busca si algún subconjunto EXACTO de esos renglones
-            # coincide con lo facturado (ej. remitos juntados de dos
-            # facturas casi simultáneas: un renglón es de ESTA factura y
-            # el otro es, confirmado con el usuario, "problema del
-            # siguiente comprobante" -- se elimina igual que un excedente
-            # normal, no se manda a mano).
-            subconjunto = _mejor_subconjunto(grupo, match_encontrado.cantidad)
-            if subconjunto is not None:
-                sobrante = [linea for linea in grupo if linea not in subconjunto]
+            # sobra cantidad -- se reparte la baja entre esos renglones
+            # (confirmado con el usuario: no importa en cuántos venga
+            # repartido, el total remitido tiene que terminar en lo
+            # facturado). Esto SIEMPRE encuentra una solución, nunca hace
+            # falta revisión manual para este caso.
+            eliminar, renglon_ajustar, nueva_cantidad_renglon = _distribuir_reduccion(grupo, match_encontrado.cantidad)
+            if eliminar:
                 resultados.append(
                     MatchResult(
                         status=MatchStatus.EXCEDENTE,
-                        remito_lines=sobrante,
+                        remito_lines=eliminar,
                         notes=(
                             "Venía agrupado con otro(s) renglón(es) del mismo código que sí "
                             "coinciden con la factura -- este renglón de más no se carga."
                         ),
                     )
                 )
-                grupo = subconjunto
-                cantidad_remito = sum(linea.cantidad for linea in grupo)
-                diferencia = cantidad_remito - match_encontrado.cantidad
+            if renglon_ajustar is not None:
+                # Se arma un MatchResult de un solo renglón (igual que el
+                # caso ya automatizado de un único renglón repetido) con
+                # un invoice_line sintético -- mismo precio por unidad
+                # que la factura real, pero con la cantidad que le toca a
+                # ESTE renglón puntual -- para que watcher.py lo ajuste
+                # solo, sin tener que tocar su lógica.
+                precio_neto_factura_original = match_encontrado.subtotal / match_encontrado.cantidad
+                invoice_line_repartido = InvoiceLine(
+                    codigo_proveedor=match_encontrado.codigo_proveedor,
+                    descripcion=match_encontrado.descripcion,
+                    cantidad=nueva_cantidad_renglon,
+                    precio_unitario=match_encontrado.precio_unitario,
+                    subtotal=round(nueva_cantidad_renglon * precio_neto_factura_original, 2),
+                )
+                resultados.append(
+                    MatchResult(
+                        status=MatchStatus.EXCEDENTE_PARCIAL,
+                        remito_lines=[renglon_ajustar],
+                        invoice_line=invoice_line_repartido,
+                        cantidad_diferencia=round(renglon_ajustar.cantidad - nueva_cantidad_renglon, 3),
+                        notes=(
+                            f"Remito: {renglon_ajustar.cantidad} (repartido entre varios renglones "
+                            f"del mismo código) -- se ajusta a {nueva_cantidad_renglon} para que el "
+                            "total coincida con lo facturado."
+                        ),
+                    )
+                )
+                continue
+            grupo = [linea for linea in grupo if linea not in eliminar]
+            cantidad_remito = sum(linea.cantidad for linea in grupo)
+            diferencia = cantidad_remito - match_encontrado.cantidad
 
         subtotal_remito = round(sum(linea.subtotal for linea in grupo), 2)
 
