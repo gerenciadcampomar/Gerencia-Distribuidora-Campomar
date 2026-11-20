@@ -639,9 +639,16 @@ class CentumBrowserClient:
                         "td", has_text=re.compile(rf"^\s*{re.escape(codigo_propio_proveedor)}\s*$")
                     )
                 )
+            # .first: confirmado con error real (MD15772/1) que puede haber
+            # más de un renglón del remito IDÉNTICO en todo lo que se usa
+            # para identificarlo acá (mismo remito, mismo código, mismo
+            # código propio, misma cantidad) -- Playwright tira error de
+            # ambigüedad si no se elige uno. Como son interchangeables
+            # entre sí (ningún dato los distingue), da lo mismo cuál de
+            # los dos se ajuste.
             campo = fila.locator(
                 "input[id^='txtRemitoCompraArticuloSuscriptoCantidadUnidadNivel_']"
-            )
+            ).first
             objetivo = str(int(round(nueva_cantidad)))
             for _ in range(4):
                 campo.fill(objetivo)
