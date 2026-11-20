@@ -236,7 +236,10 @@ def procesar_factura(
         # (ver matcher.py) -- si está excedente, se elimina cada renglón.
         for remito_line in r.remito_lines:
             client.marcar_articulo_para_eliminar(
-                remito_line.numero_remito, remito_line.codigo_articulo, remito_line.codigo_propio_proveedor
+                remito_line.numero_remito,
+                remito_line.codigo_articulo,
+                remito_line.codigo_propio_proveedor,
+                cantidad_esperada=remito_line.cantidad,
             )
     if excedentes:
         client.eliminar_articulos_marcados()
@@ -292,6 +295,7 @@ def procesar_factura(
                 remito_line.codigo_articulo,
                 r.invoice_line.cantidad,
                 remito_line.codigo_propio_proveedor,
+                cantidad_esperada=remito_line.cantidad,
             )
             if not verificado:
                 ajustes_no_verificados.append(r)
@@ -533,7 +537,10 @@ def procesar_factura_generico(
     for r in excedentes:
         for remito_line in r.remito_lines:
             client.marcar_articulo_para_eliminar(
-                remito_line.numero_remito, remito_line.codigo_articulo, remito_line.codigo_propio_proveedor
+                remito_line.numero_remito,
+                remito_line.codigo_articulo,
+                remito_line.codigo_propio_proveedor,
+                cantidad_esperada=remito_line.cantidad,
             )
     if excedentes:
         client.eliminar_articulos_marcados()
@@ -552,6 +559,7 @@ def procesar_factura_generico(
                 remito_line.codigo_articulo,
                 r.invoice_line.cantidad,
                 remito_line.codigo_propio_proveedor,
+                cantidad_esperada=remito_line.cantidad,
             )
             if not verificado:
                 ajustes_no_verificados.append(r)

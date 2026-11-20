@@ -37,6 +37,46 @@ def _formato_decimal_ar(valor: float) -> str:
     return f"{valor:.2f}".replace(".", ",")
 
 
+def _candidatas_por_cantidad(filas, cantidad_esperada: float | None) -> list:
+    """Entre varias filas candidatas (locator que puede resolver a más de
+    un <tr>), devuelve la lista de las que todavía tienen cargada
+    `cantidad_esperada` en el campo editable "Cantidad Unidad Nivel", en
+    el mismo orden en que aparecen en pantalla.
+
+    Confirmado con error real (MD15772/1): un remito puede tener varias
+    filas idénticas en código artículo + número remito + código propio
+    proveedor pero con DISTINTA cantidad (10, 10, 30, 30, 30) -- usar
+    siempre `.first` sobre esas filas, sin mirar la cantidad, hace que
+    ejecuciones sucesivas de marcar_articulo_para_eliminar /
+    ajustar_cantidad_excedente_parcial puedan actuar dos veces sobre la
+    misma fila física en vez de sobre las dos filas distintas que el
+    algoritmo de reparto (ver matcher._distribuir_reduccion) tuvo en
+    cuenta -- quedando en pantalla una cantidad de filas distinta de la
+    esperada, sin que Playwright tire ningún error (las filas son
+    indistinguibles para .first, pero no para el negocio).
+
+    Puede haber más de una fila con la MISMA cantidad esperada dentro de
+    un mismo grupo (ej.: dos de las cinco filas de 15772/1 valen 10 cada
+    una) -- por eso se devuelve la lista completa de candidatas en vez de
+    una sola, y cada llamador decide cuál de ellas todavía no usó."""
+    if cantidad_esperada is None:
+        return []
+    candidatas = []
+    for candidata in filas.all():
+        campo_cantidad = candidata.locator(
+            "input[id^='txtRemitoCompraArticuloSuscriptoCantidadUnidadNivel_']"
+        )
+        if campo_cantidad.count() == 0:
+            continue
+        try:
+            valor_actual = _num_eu(campo_cantidad.first.input_value())
+        except ValueError:
+            continue
+        if abs(valor_actual - cantidad_esperada) < 0.5:
+            candidatas.append(candidata)
+    return candidatas
+
+
 _MESES_ES = [
     "enero", "febrero", "marzo", "abril", "mayo", "junio",
     "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
@@ -560,7 +600,11 @@ class CentumBrowserClient:
         return self._paso("leer_articulos_cargados", accion)
 
     def marcar_articulo_para_eliminar(
-        self, numero_remito: str, codigo_articulo: str, codigo_propio_proveedor: str = ""
+        self,
+        numero_remito: str,
+        codigo_articulo: str,
+        codigo_propio_proveedor: str = "",
+        cantidad_esperada: float | None = None,
     ) -> None:
         """Tilda un artículo excedente para sacarlo del comprobante actual
         (queda sin suscribir, se puede traer en uno siguiente). Confirmado
@@ -574,7 +618,17 @@ class CentumBrowserClient:
         -- confirmado con error real (MD): más de un renglón del remito
         puede compartir el mismo Código Artículo de Centum (ej. "MD17001"
         para "17001" y "17001 I", dos variantes distintas del proveedor),
-        y buscar solo por Código Artículo tira un error de ambigüedad."""
+        y buscar solo por Código Artículo tira un error de ambigüedad.
+
+        `cantidad_esperada`, si se pasa, se usa para elegir -- entre varias
+        filas que coinciden en código/remito/código propio -- la que
+        todavía tiene esa cantidad cargada. Confirmado con error real
+        (MD15772/1): un mismo remito puede tener varias filas idénticas en
+        código/remito/código propio pero con DISTINTA cantidad (10, 10,
+        30, 30, 30) -- sin este filtro, .first siempre apunta a la misma
+        fila física sin importar cuál de ellas había que tildar, y una
+        ejecución repetida puede terminar tildando la misma fila dos veces
+        en vez de dos filas distintas."""
 
         def accion():
             fila = self.page.locator("tr", has_text=codigo_articulo).filter(has_text=numero_remito)
@@ -588,7 +642,21 @@ class CentumBrowserClient:
                         "td", has_text=re.compile(rf"^\s*{re.escape(codigo_propio_proveedor)}\s*$")
                     )
                 )
-            fila.locator("input[type=checkbox]").first.check()
+            # Entre las candidatas con la cantidad esperada, hay que
+            # elegir una que TODAVÍA no esté tildada -- confirmado con
+            # error real (MD15772/1): dos filas del mismo grupo pueden
+            # tener la MISMA cantidad (10 y 10), y si no se descarta la ya
+            # tildada, las dos llamadas (una por fila a eliminar) terminan
+            # tildando la misma fila física dos veces en vez de una cada
+            # una, dejando la otra sin tildar.
+            seleccionada = None
+            for candidata in _candidatas_por_cantidad(fila, cantidad_esperada):
+                if not candidata.locator("input[type=checkbox]").first.is_checked():
+                    seleccionada = candidata
+                    break
+            if seleccionada is None:
+                seleccionada = fila.first
+            seleccionada.locator("input[type=checkbox]").first.check()
 
         self._paso(f"marcar_para_eliminar_{codigo_articulo}", accion)
 
@@ -598,6 +666,7 @@ class CentumBrowserClient:
         codigo_articulo: str,
         nueva_cantidad: float,
         codigo_propio_proveedor: str = "",
+        cantidad_esperada: float | None = None,
     ) -> bool:
         """Para un excedente parcial (mismo código que la factura, pero el
         remito trae más cantidad que lo facturado): baja la cantidad del
@@ -623,6 +692,13 @@ class CentumBrowserClient:
         por el mismo motivo que en marcar_articulo_para_eliminar (más de
         un renglón puede compartir el mismo Código Artículo).
 
+        `cantidad_esperada`, si se pasa, se usa para elegir la fila
+        correcta entre varias candidatas -- mismo motivo y mismo mecanismo
+        que en marcar_articulo_para_eliminar (confirmado con error real,
+        MD15772/1: sin este filtro .first puede terminar ajustando una
+        fila con una cantidad original distinta de la que el algoritmo de
+        reparto tuvo en cuenta).
+
         Confirmado con error real: un solo fill() no alcanza -- el script
         reporta éxito pero en pantalla el valor queda sin cambiar, mismo
         patrón que Fecha Documento (algún paso posterior lo pisa). Por
@@ -639,14 +715,17 @@ class CentumBrowserClient:
                         "td", has_text=re.compile(rf"^\s*{re.escape(codigo_propio_proveedor)}\s*$")
                     )
                 )
-            # .first: confirmado con error real (MD15772/1) que puede haber
-            # más de un renglón del remito IDÉNTICO en todo lo que se usa
-            # para identificarlo acá (mismo remito, mismo código, mismo
-            # código propio, misma cantidad) -- Playwright tira error de
-            # ambigüedad si no se elige uno. Como son interchangeables
-            # entre sí (ningún dato los distingue), da lo mismo cuál de
-            # los dos se ajuste.
-            campo = fila.locator(
+            # Confirmado con error real (MD15772/1) que puede haber más de
+            # un renglón del remito IDÉNTICO en todo lo que se usa para
+            # identificarlo acá (mismo remito, mismo código, mismo código
+            # propio) pero con DISTINTA cantidad original (10, 10, 30, 30,
+            # 30) -- _candidatas_por_cantidad desambigua por la cantidad
+            # que el campo editable tiene cargada ahora mismo; sin
+            # cantidad_esperada, cae de nuevo en .first (filas realmente
+            # interchangeables entre sí).
+            candidatas = _candidatas_por_cantidad(fila, cantidad_esperada)
+            fila_elegida = candidatas[0] if candidatas else fila.first
+            campo = fila_elegida.locator(
                 "input[id^='txtRemitoCompraArticuloSuscriptoCantidadUnidadNivel_']"
             ).first
             objetivo = str(int(round(nueva_cantidad)))
