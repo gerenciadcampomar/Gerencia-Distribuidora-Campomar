@@ -336,10 +336,28 @@ def procesar_factura(
             f"Comprobante {numero_comprobante}: {validacion.detalle} NO guardes sin revisar.",
         )
 
+    # Marcador aparte, pedido explícito del usuario: necesita saber de
+    # entrada si lo que va a ver en pantalla (códigos y cantidades) ya
+    # coincide con el comprobante, SIN tener que leer todo el detalle de
+    # precio -- son dos preguntas distintas (¿está bien cargado? vs.
+    # ¿cierra la plata?). Si quedó algo que no se pudo ajustar solo
+    # (código repetido en varios renglones sin un subconjunto exacto, o
+    # un ajuste que no se pudo verificar en pantalla), todavía NO está.
+    codigos_sin_resolver = excedentes_parciales_sin_ajustar + ajustes_no_verificados
+    if codigos_sin_resolver:
+        marcador_codigos = (
+            f">>> CÓDIGOS Y CANTIDADES: NO OK -- quedaron {len(codigos_sin_resolver)} código(s) "
+            "sin poder ajustar solo, no coinciden todavía con el comprobante (ver detalle abajo). <<<"
+        )
+    else:
+        marcador_codigos = ">>> CÓDIGOS Y CANTIDADES: OK -- lo que ves en pantalla coincide con el comprobante. <<<"
+
     lineas_reporte = [
         f"Factura: {pdf_path.name}",
         f"Proveedor: {slug}",
         f"Remitos elegidos: {', '.join(numeros_elegidos) or '(ninguno)'}",
+        "",
+        marcador_codigos,
         "",
     ]
     for r in resultados:
@@ -559,10 +577,20 @@ def procesar_factura_generico(
             "precio ni descuentos -- revisalos vos antes de guardar.",
         )
 
+    if hay_revision_manual:
+        marcador_codigos = (
+            ">>> CÓDIGOS Y CANTIDADES: NO OK -- hay algo que todavía no coincide con el "
+            "comprobante, revisá el detalle abajo. <<<"
+        )
+    else:
+        marcador_codigos = ">>> CÓDIGOS Y CANTIDADES: OK -- lo que ves en pantalla coincide con el comprobante. <<<"
+
     lineas_reporte = [
         f"Factura: {pdf_path.name}",
         f"Proveedor: genérico (CUIT {cuit_buscar}, sin parser calibrado)",
         f"Remitos elegidos: {', '.join(numeros_elegidos) or '(ninguno)'}",
+        "",
+        marcador_codigos,
         "",
         ">>> Modo genérico: solo se compararon código y cantidad. Precio, descuentos "
         "y Regímenes Especiales NO están validados en esta vía -- revisalos a mano. <<<",
